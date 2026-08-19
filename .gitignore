@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+.env.local
+.npm-cache/
+functions/lib/
+.vercel
+functions/node_modules/

@@ -1,0 +1,29 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "codeDates",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "productId", "order": "ASCENDING" },
+        { "fieldPath": "expirationDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "codeDates",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "expirationDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "codeDates",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "codeDateCheckId", "order": "ASCENDING" },
+        { "fieldPath": "expirationDate", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

@@ -1,0 +1,6 @@
+import { LogOut, Store, UserRound } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { AppShell } from '../components/app-shell'
+import { Button } from '../components/ui/button'
+import { useAuth } from '../hooks/use-auth'
+export function SettingsPage() { const { signOut } = useAuth(); const navigate = useNavigate(); function logout() { signOut(); navigate('/login') } return <AppShell><h2 className="text-2xl font-bold">Settings</h2><p className="mt-1 text-sm text-slate-500">Manage your FreshTrack account and store.</p><section className="mt-7 space-y-3"><article className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-card"><span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><UserRound size={19}/></span><div><p className="font-semibold">Account</p><p className="text-sm text-slate-500">Local admin</p></div></article><article className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-card"><span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><Store size={19}/></span><div><p className="font-semibold">Store</p><p className="text-sm text-slate-500">Default store</p></div></article></section><Button variant="danger" className="mt-7 w-full" onClick={logout}><LogOut size={17} className="mr-2"/>Sign out</Button></AppShell> }

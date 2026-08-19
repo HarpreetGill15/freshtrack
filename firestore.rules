@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /products/{id} {
+      allow read: if true;
+      allow create, update: if request.resource.data.upc is string && request.resource.data.barcode is string;
+    }
+
+    match /codeDates/{id} {
+      allow read: if true;
+      allow create: if request.resource.data.productId is string
+        && request.resource.data.codeDateCheckId is string
+        && request.resource.data.quantity is number && request.resource.data.quantity > 0
+        && request.resource.data.status == 'active';
+      // Status transitions (markdown/clear/remove) and quantity merges (duplicate-date dedupe) are
+      // both legitimate updates; productId/codeDateCheckId/expirationDate stay locked either way.
+      allow update: if request.resource.data.productId == resource.data.productId
+        && request.resource.data.codeDateCheckId == resource.data.codeDateCheckId
+        && request.resource.data.expirationDate == resource.data.expirationDate
+        && request.resource.data.quantity is number && request.resource.data.quantity > 0
+        && request.resource.data.status in ['active', 'marked_down', 'cleared', 'removed'];
+    }
+
+    match /codeDateChecks/{id} {
+      allow read: if true;
+      allow create: if request.resource.data.department is string
+        && request.resource.data.month is string
+        && request.resource.data.checkDate is string
+        && request.resource.data.status == 'active';
+      // Only status/completedAt are meant to change after creation (Finish Check); the rest of the
+      // check's identity is locked once created.
+      allow update: if request.resource.data.department == resource.data.department
+        && request.resource.data.month == resource.data.month
+        && request.resource.data.status in ['active', 'completed'];
+    }
+  }
+}

@@ -1,0 +1,4 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@layer base { * { @apply border-slate-200; } body { @apply m-0 bg-slate-50 font-sans text-slate-800; } input { @apply text-slate-900; } }
