@@ -18,3 +18,17 @@ export function normalizeUpc(value: string) {
   const stripped = digits.replace(/^0+/, '') || '0'
   return stripped.length <= 12 ? stripped.padStart(12, '0') : digits
 }
+
+/**
+ * Normalizes a code read directly off a printed UPC-A/EAN-13 barcode (camera scan). A real barcode
+ * carries a genuine check digit as its last digit, but the catalogue stores codes without one
+ * (11-digit code, zero-padded to 12 by normalizeUpc) since that's how they arrive from Excel imports
+ * and manual entry. Dropping the presumed check digit before normalizing keeps camera-created
+ * products filed under the same canonical form future scans of the same item will resolve to.
+ * Manually typed codes should use normalizeUpc directly — staff already enter them without a check
+ * digit, matching catalogue convention.
+ */
+export function normalizeScannedUpc(value: string) {
+  const digits = value.replace(/\D/g, '')
+  return normalizeUpc(digits.length >= 12 ? digits.slice(0, -1) : digits)
+}

@@ -28,7 +28,7 @@ export function ScanPage() {
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Product lookup failed. Check your connection and try again.') } finally { setLoading(false) }
   }, [])
 
-  async function createManually(event: React.FormEvent) { event.preventDefault(); if (!upc || !manualDescription.trim()) return; setLoading(true); try { const created = await saveScannedProduct({ upc, name: manualDescription.trim(), description: manualDescription.trim() }); setProduct(created); setNotFound(false); setMessage('') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not create product.') } finally { setLoading(false) } }
+  async function createManually(event: React.FormEvent) { event.preventDefault(); if (!upc || !manualDescription.trim()) return; setLoading(true); try { const created = await saveScannedProduct({ upc, name: manualDescription.trim(), description: manualDescription.trim() }, wasCameraScan); setProduct(created); setNotFound(false); setMessage('') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not create product.') } finally { setLoading(false) } }
 
   async function saveDate(andNext: boolean) {
     const codeDateCheckId = activeCodeDateCheckId()

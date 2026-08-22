@@ -1,6 +1,6 @@
 import { addDoc, collection, doc, getDoc, getDocs, orderBy, query, serverTimestamp, setDoc, updateDoc, where, type FieldValue } from 'firebase/firestore'
 import { db } from '../lib/firebase'
-import { normalizeUpc } from '../lib/upc'
+import { normalizeScannedUpc, normalizeUpc } from '../lib/upc'
 import type { CodeDate, DashboardEntry, Product, ProductStatus } from '../types/domain'
 
 const database = () => { if (!db) throw new Error('Firebase is not configured.'); return db }
@@ -31,11 +31,27 @@ export async function findProductByUpc(rawUpc: string) {
   // Fallback for products imported/created before UPC normalization was unified to always
   // strip-and-pad to 12 digits — older records may be stored under the raw digit sequence as typed.
   const rawDigits = rawUpc.replace(/\D/g, '')
-  return rawDigits && rawDigits !== canonical ? lookupByUpcValue(firestore, rawDigits) : null
+  if (rawDigits && rawDigits !== canonical) {
+    const rawMatch = await lookupByUpcValue(firestore, rawDigits)
+    if (rawMatch) return rawMatch
+  }
+  // Fallback for camera scans of a real UPC-A/EAN-13 barcode: the printed barcode carries a genuine
+  // check digit, but the catalogue stores codes without one (11-digit code zero-padded to 12) since
+  // that's how they arrive from Excel imports and manual entry. Drop the presumed check digit (the
+  // last digit) and re-normalize before giving up.
+  const withoutCheckDigit = normalizeScannedUpc(rawDigits)
+  if (withoutCheckDigit && withoutCheckDigit !== canonical) return lookupByUpcValue(firestore, withoutCheckDigit)
+  return null
 }
 
-export async function saveScannedProduct(product: { upc: string; name: string; description: string; brand?: string; vendorCode?: string; subDepartment?: string; imageUrl?: string }) {
-  const upc = normalizeUpc(product.upc)
+/**
+ * `fromCameraScan: true` means `product.upc` is a raw code read off a printed barcode (carries a
+ * genuine check digit) rather than typed/imported in the catalogue's no-check-digit convention — it
+ * gets normalized with normalizeScannedUpc so the saved record lines up with how future scans of the
+ * same item resolve (see findProductByUpc's check-digit fallback).
+ */
+export async function saveScannedProduct(product: { upc: string; name: string; description: string; brand?: string; vendorCode?: string; subDepartment?: string; imageUrl?: string }, fromCameraScan = false) {
+  const upc = fromCameraScan ? normalizeScannedUpc(product.upc) : normalizeUpc(product.upc)
   const existing = await findProductByUpc(upc)
   if (existing) return existing
   const firestore = database()
