@@ -11,10 +11,10 @@ const currentMonth = today.slice(0, 7)
 
 export function NewCodeDateCheckPage() {
   const navigate = useNavigate()
-  const [name, setName] = useState(''); const [department, setDepartment] = useState(''); const [section, setSection] = useState(''); const [month, setMonth] = useState(currentMonth); const [checkDate, setCheckDate] = useState(today); const [saving, setSaving] = useState(false); const [error, setError] = useState('')
+  const [name, setName] = useState(''); const [department, setDepartment] = useState(''); const [month, setMonth] = useState(currentMonth); const [checkDate, setCheckDate] = useState(today); const [saving, setSaving] = useState(false); const [error, setError] = useState('')
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setSaving(true); setError('')
-    try { await createCodeDateCheck({ name: name.trim() || `${department} — ${section.trim() || 'Check'}`, department, section: section.trim(), month, checkDate }); navigate('/scan', { replace: true }) }
+    try { await createCodeDateCheck({ name: name.trim() || `${department} — Check`, department, month, checkDate }); navigate('/scan', { replace: true }) }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not create Code Date Check.') }
     finally { setSaving(false) }
   }
@@ -24,10 +24,7 @@ export function NewCodeDateCheckPage() {
     <p className="mt-1 text-sm text-slate-500">A few quick fields, then start scanning.</p>
     <form className="mt-6 space-y-4" onSubmit={submit}>
       <label className="block text-sm font-medium">Name<input className="mt-1 w-full rounded-xl border p-3 text-base" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. August Produce" autoFocus /></label>
-      <div className="grid grid-cols-2 gap-3">
-        <label className="block text-sm font-medium">Department / Area<select className="mt-1 w-full rounded-xl border bg-white p-3 text-base" value={department} onChange={e => setDepartment(e.target.value)} required><option value="" disabled>Select</option>{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}</select></label>
-        <label className="block text-sm font-medium">Section<input className="mt-1 w-full rounded-xl border p-3 text-base" value={section} onChange={e => setSection(e.target.value)} placeholder="e.g. Salads" /></label>
-      </div>
+      <label className="block text-sm font-medium">Department / Area<select className="mt-1 w-full rounded-xl border bg-white p-3 text-base" value={department} onChange={e => setDepartment(e.target.value)} required><option value="" disabled>Select</option>{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}</select></label>
       <div className="grid grid-cols-2 gap-3">
         <label className="block text-sm font-medium">Month<input className="mt-1 w-full rounded-xl border p-3 text-base" type="month" value={month} onChange={e => setMonth(e.target.value)} required /></label>
         <label className="block text-sm font-medium">Check date<input className="mt-1 w-full rounded-xl border p-3 text-base" type="date" value={checkDate} onChange={e => setCheckDate(e.target.value)} required /></label>

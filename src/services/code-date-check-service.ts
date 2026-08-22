@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, getDoc, getDocs, limit, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, serverTimestamp, updateDoc, where } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import type { CodeDateCheck } from '../types/domain'
 
@@ -41,4 +41,13 @@ export async function completeCodeDateCheck(id: string) {
 export async function listCodeDateChecks(count = 50) {
   const snapshot = await getDocs(query(collection(requiredDb(), 'codeDateChecks'), orderBy('createdAt', 'desc'), limit(count)))
   return snapshot.docs.map(item => ({ id: item.id, ...item.data() } as CodeDateCheck))
+}
+
+/** Deletes a check and every code date recorded under it (e.g. removing test checks) — irreversible. */
+export async function deleteCodeDateCheck(id: string) {
+  const database = requiredDb()
+  const codeDates = await getDocs(query(collection(database, 'codeDates'), where('codeDateCheckId', '==', id)))
+  await Promise.all(codeDates.docs.map(item => deleteDoc(item.ref)))
+  await deleteDoc(doc(database, 'codeDateChecks', id))
+  if (activeCodeDateCheckId() === id) setActiveCodeDateCheckId(null)
 }

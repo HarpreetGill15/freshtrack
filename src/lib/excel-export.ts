@@ -24,7 +24,7 @@ export function buildCheckWorkbook(check: CodeDateCheck, entries: DashboardEntry
 }
 
 export function checkExportFilename(check: CodeDateCheck) {
-  const safeName = (check.name.trim() || `${check.department}_${check.section}`).replace(/\s+/g, '_').replace(/[^\w-]/g, '')
+  const safeName = (check.name.trim() || check.department).replace(/\s+/g, '_').replace(/[^\w-]/g, '')
   return `${safeName}_Code_Date_Check_${check.checkDate}.xlsx`
 }
 

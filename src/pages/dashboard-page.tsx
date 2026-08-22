@@ -10,6 +10,7 @@ type Tab = 'all' | 'today' | 'next5' | 'marked_down' | 'cleared' | 'removed'
 const TABS: { id: Tab; label: string }[] = [{ id: 'all', label: 'All active' }, { id: 'today', label: 'Today' }, { id: 'next5', label: 'Next 5 Days' }, { id: 'marked_down', label: 'Marked Down' }, { id: 'cleared', label: 'Cleared' }, { id: 'removed', label: 'Removed' }]
 const OPERATIONAL_STATUSES: ProductStatus[] = ['active', 'marked_down']
 const daysUntil = (date: Date) => Math.ceil((new Date(date).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000)
+const shortDate = (date: Date) => date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 function bucketLabel(days: number) { if (days < 0) return `${Math.abs(days)}D OVERDUE`; if (days === 0) return 'TODAY'; if (days === 1) return 'TOMORROW'; if (days <= 5) return `${days} DAYS`; return 'LATER' }
 function bucketTone(days: number) { if (days <= 0) return 'red' as const; if (days === 1) return 'orange' as const; if (days <= 5) return 'yellow' as const; return 'green' as const }
 const TONE_CLASSES = { red: ['bg-red-500', 'bg-red-50 text-red-700'], orange: ['bg-orange-500', 'bg-orange-50 text-orange-700'], yellow: ['bg-yellow-400', 'bg-yellow-50 text-yellow-800'], green: ['bg-brand-500', 'bg-brand-50 text-brand-700'] } as const
@@ -18,7 +19,7 @@ export function DashboardPage() {
   const [tab, setTab] = useState<Tab>('all')
   const [operational, setOperational] = useState<DashboardEntry[]>([])
   const [resolved, setResolved] = useState<DashboardEntry[]>([])
-  const [search, setSearch] = useState(''); const [department, setDepartment] = useState('all'); const [section, setSection] = useState('all')
+  const [search, setSearch] = useState(''); const [department, setDepartment] = useState('all')
   const [loading, setLoading] = useState(true); const [error, setError] = useState('')
 
   const loadOperational = useCallback(async () => { try { setOperational(await getDashboardEntries(OPERATIONAL_STATUSES)); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'Could not load the dashboard.') } }, [])
@@ -36,20 +37,18 @@ export function DashboardPage() {
 
   const source = tab === 'cleared' || tab === 'removed' ? resolved : operational
   const departments = useMemo(() => [...new Set(source.map(i => i.department).filter(Boolean))].sort(), [source])
-  const sections = useMemo(() => [...new Set(source.filter(i => department === 'all' || i.department === department).map(i => i.section).filter(Boolean))].sort(), [source, department])
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
     return source.filter(item => {
       if (department !== 'all' && item.department !== department) return false
-      if (section !== 'all' && item.section !== section) return false
-      if (q && !`${item.productName} ${item.upc} ${item.department} ${item.section}`.toLowerCase().includes(q)) return false
+      if (q && !`${item.productName} ${item.upc} ${item.department}`.toLowerCase().includes(q)) return false
       if (tab === 'today') return item.status === 'active' && daysUntil(item.expirationDate) <= 0
       if (tab === 'next5') return item.status === 'active' && daysUntil(item.expirationDate) <= 5
       if (tab === 'marked_down') return item.status === 'marked_down'
       return true
     })
-  }, [source, department, section, search, tab])
+  }, [source, department, search, tab])
 
   const activeItems = filtered.filter(i => i.status === 'active')
   const markedDownItems = filtered.filter(i => i.status === 'marked_down')
@@ -66,10 +65,11 @@ export function DashboardPage() {
 
     <div className="mt-5 flex gap-2 overflow-x-auto pb-1">{TABS.map(t => <button key={t.id} onClick={() => setTab(t.id)} className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${tab === t.id ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'}`}>{t.label}</button>)}</div>
 
-    <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-      <label className="relative flex-1"><Search className="absolute left-3 top-3 text-slate-400" size={18}/><input className="w-full rounded-xl border bg-white py-3 pl-10 pr-3 text-sm" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search product, UPC" /></label>
-      <select className="rounded-xl border bg-white p-3 text-sm sm:w-40" value={department} onChange={e => { setDepartment(e.target.value); setSection('all') }}><option value="all">All areas</option>{departments.map(d => <option key={d}>{d}</option>)}</select>
-      <select className="rounded-xl border bg-white p-3 text-sm sm:w-40" value={section} onChange={e => setSection(e.target.value)}><option value="all">All sections</option>{sections.map(s => <option key={s}>{s}</option>)}</select>
+    <label className="relative mt-4 block"><Search className="absolute left-3 top-3 text-slate-400" size={18}/><input className="w-full rounded-xl border bg-white py-3 pl-10 pr-3 text-sm" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search product, UPC" /></label>
+
+    <div className="mt-3 flex flex-wrap gap-2">
+      <button onClick={() => setDepartment('all')} className={`rounded-lg border-2 px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition ${department === 'all' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-600 hover:border-slate-400'}`}>All departments</button>
+      {departments.map(d => <button key={d} onClick={() => setDepartment(d)} className={`rounded-lg border-2 px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition ${department === d ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-600 hover:border-slate-400'}`}>{d}</button>)}
     </div>
 
     <section className="mt-6 space-y-8">
@@ -102,11 +102,11 @@ function Card({ item, onStatus }: { item: DashboardEntry; onStatus: (id: string,
       <div className={`w-1.5 ${bar}`}/>
       <div className="min-w-0 flex-1 p-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0"><h4 className="truncate font-bold">{item.productName}</h4><p className="mt-1 text-xs text-slate-500">{item.department}{item.section ? ` / ${item.section}` : ''} · UPC {item.upc}</p></div>
+          <div className="min-w-0"><h4 className="truncate font-bold">{item.productName}</h4><p className="mt-1 text-xs text-slate-500">{item.department} · UPC {item.upc}</p></div>
           <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-bold ${badge}`}>{item.status === 'marked_down' ? 'Recheck' : bucketLabel(days)}</span>
         </div>
-        <div className="mt-4 flex justify-between text-sm text-slate-500"><span>{item.expirationDate.toLocaleDateString()}</span><span>Qty {item.quantity}</span></div>
-        {item.status === 'marked_down' && item.recheckAt && <p className="mt-2 text-xs font-medium text-amber-700">Recheck by {item.recheckAt.toLocaleDateString()}</p>}
+        <div className="mt-4 flex items-center justify-between"><span className="text-sm text-slate-500">{shortDate(item.expirationDate)}</span><span className="rounded-full bg-slate-900 px-3 py-1 text-sm font-bold text-white">Qty {item.quantity}</span></div>
+        {item.status === 'marked_down' && item.recheckAt && <p className="mt-2 text-xs font-medium text-amber-700">Recheck by {shortDate(item.recheckAt)}</p>}
 
         {item.status === 'active' && !markingDown && <div className="mt-3 flex gap-2">
           <Button variant="secondary" className="min-h-9 flex-1 px-2 text-xs" onClick={() => setMarkingDown(true)}>Mark Down</Button>

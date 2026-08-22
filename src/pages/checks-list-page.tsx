@@ -1,9 +1,9 @@
-import { CheckCircle2, ClipboardList, Download, ScanLine } from 'lucide-react'
+import { CheckCircle2, ClipboardList, Download, ScanLine, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AppShell } from '../components/app-shell'
 import { Button } from '../components/ui/button'
-import { completeCodeDateCheck, listCodeDateChecks, setActiveCodeDateCheckId } from '../services/code-date-check-service'
+import { completeCodeDateCheck, deleteCodeDateCheck, listCodeDateChecks, setActiveCodeDateCheckId } from '../services/code-date-check-service'
 import { getCodeDatesForCheck } from '../services/product-service'
 import { downloadCheckExport } from '../lib/excel-export'
 import type { CodeDateCheck } from '../types/domain'
@@ -34,6 +34,14 @@ export function ChecksListPage() {
     finally { setBusyId(null) }
   }
 
+  async function remove(check: CodeDateCheck) {
+    if (!window.confirm(`Delete "${check.name}"? This also deletes every scanned item recorded under it. This can't be undone.`)) return
+    setBusyId(check.id); setError('')
+    try { await deleteCodeDateCheck(check.id); await load() }
+    catch (e) { setError(e instanceof Error ? e.message : 'Could not delete this check.') }
+    finally { setBusyId(null) }
+  }
+
   return <AppShell>
     <h2 className="text-2xl font-bold">Code Date Checks</h2>
     <p className="mt-1 text-sm text-slate-500">Export or finish any check from here — works from a computer regardless of which phone did the scanning. Continue scanning to add more items to an unfinished check, even from a different device.</p>
@@ -45,7 +53,7 @@ export function ChecksListPage() {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h3 className="truncate font-bold">{check.name}</h3>
-              <p className="mt-1 text-xs text-slate-500">{check.department}{check.section ? ` / ${check.section}` : ''} · {check.month} · {check.checkDate}</p>
+              <p className="mt-1 text-xs text-slate-500">{check.department} · {check.month} · {check.checkDate}</p>
             </div>
             <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-bold ${check.status === 'completed' ? 'bg-slate-100 text-slate-600' : 'bg-brand-50 text-brand-700'}`}>{check.status === 'completed' ? 'Completed' : 'Active'}</span>
           </div>
@@ -53,6 +61,7 @@ export function ChecksListPage() {
             {check.status !== 'completed' && <Button variant="secondary" className="min-h-9 flex-1 px-2 text-xs" onClick={() => resume(check)}><ScanLine size={15} className="mr-1"/>Continue scanning</Button>}
             <Button variant="secondary" className="min-h-9 flex-1 px-2 text-xs" disabled={busyId === check.id} onClick={() => void download(check)}><Download size={15} className="mr-1"/>Excel</Button>
             {check.status !== 'completed' && <Button className="min-h-9 flex-1 px-2 text-xs" disabled={busyId === check.id} onClick={() => void finish(check)}><CheckCircle2 size={15} className="mr-1"/>Finish</Button>}
+            <Button variant="danger" className="min-h-9 shrink-0 px-2 text-xs" disabled={busyId === check.id} aria-label="Delete check" onClick={() => void remove(check)}><Trash2 size={15}/></Button>
           </div>
         </article>)}
     </section>

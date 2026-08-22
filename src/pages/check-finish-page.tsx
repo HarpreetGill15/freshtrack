@@ -42,7 +42,7 @@ export function CheckFinishPage() {
 
   return <AppShell>
     <h2 className="text-2xl font-bold">Finish Code Date Check</h2>
-    <p className="mt-1 text-sm text-slate-500">{check.name} · {check.department}{check.section ? ` / ${check.section}` : ''} · {check.month}</p>
+    <p className="mt-1 text-sm text-slate-500">{check.name} · {check.department} · {check.month}</p>
 
     <section className="mt-6 grid grid-cols-2 gap-3">
       <Stat label="Products scanned" value={productCount} />

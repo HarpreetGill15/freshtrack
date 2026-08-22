@@ -33,7 +33,6 @@ export interface CodeDateCheck {
   id: string
   name: string
   department: string
-  section: string
   month: string
   checkDate: string
   status: CodeDateCheckStatus
@@ -56,7 +55,6 @@ export interface DashboardEntry {
   status: ProductStatus
   recheckAt?: Date
   department: string
-  section: string
   codeDateCheckId: string
   codeDateCheckName: string
   createdAt?: Date

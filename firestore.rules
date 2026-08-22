@@ -19,6 +19,8 @@ service cloud.firestore {
         && request.resource.data.expirationDate == resource.data.expirationDate
         && request.resource.data.quantity is number && request.resource.data.quantity > 0
         && request.resource.data.status in ['active', 'marked_down', 'cleared', 'removed'];
+      // Cascade delete when a Code Date Check is deleted (see deleteCodeDateCheck).
+      allow delete: if true;
     }
 
     match /codeDateChecks/{id} {
@@ -32,6 +34,7 @@ service cloud.firestore {
       allow update: if request.resource.data.department == resource.data.department
         && request.resource.data.month == resource.data.month
         && request.resource.data.status in ['active', 'completed'];
+      allow delete: if true;
     }
   }
 }
