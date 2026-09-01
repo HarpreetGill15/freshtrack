@@ -40,17 +40,58 @@ keeping this config secret. This is standard Firebase web practice.
 3. Add the frontend env vars from step 2, plus the server-only ones from step 4 and 5 below.
 4. Deploy. `/api/reminders` is auto-detected as a serverless function from the `api/` directory.
 
-## 4. Cloud Function (optional secondary email path)
+## 4. Daily email (Cloud Function + Resend)
 
-The repo also includes a scheduled Cloud Function (`functions/`) that emails a reminder via Resend,
-independent of Zapier. Skip this section entirely if you're only using Zapier.
+This is the recommended path for a single daily reminder email — no Zapier account needed. It's a
+scheduled Cloud Function (`functions/src/index.ts`) that queries Firestore directly every morning
+and sends one HTML email via [Resend](https://resend.com), grouped the same way as the dashboard:
+**Marked Down — Recheck Required** first (flagging anything overdue for recheck), then
+**Needs Initial Action**.
 
+### One-time setup
+
+1. **Create a free Resend account** at resend.com and grab your API key from
+   Dashboard > API Keys. The free tier (100 emails/day) is more than enough for one daily digest.
+2. **For testing (no domain setup needed)**: Resend gives every account a shared sandbox sender,
+   `onboarding@resend.dev`, which the function uses by default. It only delivers to the email
+   address you signed up to Resend with — that's fine for testing to yourself.
+3. **Set the secrets** (each prompts for a value in your terminal):
+   ```
+   firebase use freshtrack-590fc
+   firebase functions:secrets:set RESEND_API_KEY
+   firebase functions:secrets:set REMINDER_TO_EMAIL
+   ```
+   For `REMINDER_TO_EMAIL`, use the same address you signed up to Resend with while testing.
+4. **Build and deploy**:
+   ```
+   cd functions && npm install && npm run build && cd ..
+   firebase deploy --only functions
+   ```
+   This requires the project to be on Firebase's **Blaze (pay-as-you-go)** plan — scheduled
+   functions (Cloud Scheduler) aren't available on the free Spark plan. You won't be charged for
+   normal usage at this volume; Blaze just removes the hard cap.
+
+### Testing it right away (don't wait for 7am)
+
+The deploy also creates `testSendExpiryReminders`, an on-demand HTTPS version of the exact same
+email, protected by its own shared secret:
 ```
-firebase functions:secrets:set RESEND_API_KEY
-firebase functions:secrets:set REMINDER_TO_EMAIL
-cd functions && npm install && npm run build && cd ..
-firebase deploy --only functions
+firebase functions:secrets:set TEST_TRIGGER_KEY   # generate one with: openssl rand -hex 32
+curl -H "x-api-key: <TEST_TRIGGER_KEY>" https://us-central1-freshtrack-590fc.cloudfunctions.net/testSendExpiryReminders
 ```
+It returns `{"sent": true, "count": <n>}` (or `{"sent": false, "count": 0}` if nothing currently
+needs attention) and the email lands within a few seconds. Once you've deployed, you can also
+"Force run" the scheduled job itself from Google Cloud Console > Cloud Scheduler, without needing
+the curl command.
+
+### Going live with your own domain later
+
+Once you're happy with the test emails, verify your own sending domain in Resend (Dashboard >
+Domains) and set:
+```
+firebase functions:secrets:set RESEND_FROM_EMAIL   # e.g. "FreshTrack <reminders@yourdomain.com>"
+```
+This unlocks sending to any recipient, not just your own Resend account email.
 
 ## 5. Zapier integration (`/api/reminders`)
 
