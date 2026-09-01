@@ -1,6 +1,6 @@
-import { CalendarDays, Check, CheckCircle2, ClipboardList, Percent, Search, Trash2, XCircle } from 'lucide-react'
+import { CalendarDays, Check, CheckCircle2, ChevronDown, ClipboardList, Percent, Search, Trash2, XCircle } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { AppShell } from '../components/app-shell'
 import { Button } from '../components/ui/button'
 import { getDashboardEntries, setCodeDateStatus } from '../services/product-service'
@@ -16,6 +16,10 @@ function bucketTone(days: number) { if (days <= 0) return 'red' as const; if (da
 const TONE_CLASSES = { red: ['bg-red-500', 'bg-red-50 text-red-700'], orange: ['bg-orange-500', 'bg-orange-50 text-orange-700'], yellow: ['bg-yellow-400', 'bg-yellow-50 text-yellow-800'], green: ['bg-brand-500', 'bg-brand-50 text-brand-700'], slate: ['bg-slate-300', 'bg-slate-100 text-slate-500'] } as const
 
 const byQtyDesc = (a: DashboardEntry, b: DashboardEntry) => b.quantity - a.quantity
+/** Recheck is due once its target date has arrived (today or earlier) — these are the ones that actually need someone to walk over and look at the shelf. */
+const recheckDue = (item: DashboardEntry) => item.status === 'marked_down' && item.recheckAt != null && daysUntil(item.recheckAt) <= 0
+/** Overdue/due-today rechecks sort first so they can't be scrolled past unnoticed; ties fall back to quantity. */
+const byRecheckUrgency = (a: DashboardEntry, b: DashboardEntry) => Number(recheckDue(b)) - Number(recheckDue(a)) || byQtyDesc(a, b)
 
 /** LATER can span several weeks of items — sub-grouped by exact date so the list stays scannable instead of one long undifferentiated block. */
 function groupByDate(items: DashboardEntry[]) {
@@ -27,7 +31,10 @@ function groupByDate(items: DashboardEntry[]) {
 }
 
 export function DashboardPage() {
-  const [tab, setTab] = useState<Tab>('all')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialTab = TABS.find(t => t.id === searchParams.get('tab'))?.id ?? 'all'
+  const [tab, setTabState] = useState<Tab>(initialTab)
+  const setTab = useCallback((next: Tab) => { setTabState(next); setSearchParams(next === 'all' ? {} : { tab: next }, { replace: true }) }, [setSearchParams])
   const [operational, setOperational] = useState<DashboardEntry[]>([])
   const [resolved, setResolved] = useState<DashboardEntry[]>([])
   const [search, setSearch] = useState(''); const [department, setDepartment] = useState('all')
@@ -62,7 +69,7 @@ export function DashboardPage() {
   }, [source, department, search, tab])
 
   const activeItems = filtered.filter(i => i.status === 'active')
-  const markedDownItems = useMemo(() => filtered.filter(i => i.status === 'marked_down').sort(byQtyDesc), [filtered])
+  const markedDownItems = useMemo(() => filtered.filter(i => i.status === 'marked_down').sort(byRecheckUrgency), [filtered])
   const doneItems = useMemo(() => [...filtered].sort(byQtyDesc), [filtered])
   const buckets = useMemo(() => {
     const map = new Map<string, DashboardEntry[]>()
@@ -72,26 +79,32 @@ export function DashboardPage() {
       .sort((a, b) => a.minDays - b.minDays)
   }, [activeItems])
 
-  const firstCardId = tab === 'marked_down' ? markedDownItems[0]?.id : buckets[0]?.items[0]?.id
+  const firstCardId = markedDownItems.length > 0 ? markedDownItems[0]?.id : buckets[0]?.items[0]?.id
 
   const stats = useMemo(() => ({
     overdue: operational.filter(i => i.status === 'active' && daysUntil(i.expirationDate) < 0).length,
     today: operational.filter(i => i.status === 'active' && daysUntil(i.expirationDate) === 0).length,
     next5: operational.filter(i => i.status === 'active' && daysUntil(i.expirationDate) >= 1 && daysUntil(i.expirationDate) <= 5).length,
     markedDown: operational.filter(i => i.status === 'marked_down').length,
+    recheckDue: operational.filter(recheckDue).length,
   }), [operational])
 
   return <AppShell>
     <div className="flex items-start justify-between"><div><h2 className="text-2xl font-bold">Expiry dashboard</h2><p className="mt-1 text-sm text-slate-500">Grouped by expiration, highest quantity first in each group.</p></div><Link to="/scan"><Button>Scan item</Button></Link></div>
 
     <div className="mt-4 grid grid-cols-4 gap-1.5">
-      <StatPill label="Overdue" value={stats.overdue} tone="bg-red-50 text-red-700" />
-      <StatPill label="Due Today" value={stats.today} tone="bg-orange-50 text-orange-700" />
-      <StatPill label="Next 5d" value={stats.next5} tone="bg-yellow-50 text-yellow-800" />
-      <StatPill label="Marked Down" value={stats.markedDown} tone="bg-amber-50 text-amber-800" />
+      <StatPill label="Overdue" value={stats.overdue} tone="bg-red-50 text-red-700" onClick={() => setTab('today')} />
+      <StatPill label="Due Today" value={stats.today} tone="bg-orange-50 text-orange-700" onClick={() => setTab('today')} />
+      <StatPill label="Next 5d" value={stats.next5} tone="bg-yellow-50 text-yellow-800" onClick={() => setTab('next5')} />
+      <StatPill label="Marked Down" value={stats.markedDown} tone="bg-amber-50 text-amber-800" onClick={() => setTab('marked_down')} />
     </div>
 
-    <div className="mt-4 flex gap-2 overflow-x-auto pb-1">{TABS.map(t => <button key={t.id} onClick={() => setTab(t.id)} className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${tab === t.id ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'}`}>{t.label}</button>)}</div>
+    {stats.recheckDue > 0 && tab !== 'marked_down' && <button onClick={() => setTab('marked_down')} className="mt-3 flex w-full items-center justify-between gap-2 rounded-xl border-2 border-amber-400 bg-amber-100 px-4 py-3 text-left text-sm font-bold text-amber-900 shadow-sm animate-pulse">
+      <span className="flex items-center gap-2"><Percent size={16}/>{stats.recheckDue} marked-down item{stats.recheckDue === 1 ? '' : 's'} due for recheck now</span>
+      <span className="shrink-0 underline">Review →</span>
+    </button>}
+
+    <div className="mt-4 flex gap-2 overflow-x-auto pb-1">{TABS.map(t => <button key={t.id} onClick={() => setTab(t.id)} className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${tab === t.id ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'}`}>{t.label}{t.id === 'marked_down' && stats.recheckDue > 0 ? ` (${stats.recheckDue})` : ''}</button>)}</div>
 
     <div className="mt-3 rounded-2xl bg-white p-3 shadow-card">
       <label className="relative block"><Search className="absolute left-3 top-3 text-slate-400" size={18}/><input className="w-full rounded-xl border bg-white py-3 pl-10 pr-3 text-sm" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search product, UPC" /></label>
@@ -106,6 +119,10 @@ export function DashboardPage() {
         : error ? <p className="rounded-2xl bg-red-50 p-4 text-sm text-red-700">{error}</p>
         : !filtered.length ? <div className="rounded-2xl border border-dashed bg-white p-10 text-center"><CalendarDays className="mx-auto text-slate-400"/><p className="mt-3 font-semibold">Nothing here</p><p className="mt-1 text-sm text-slate-500">Scan a product and add an expiration date to see it here.</p></div>
         : <>
+          {tab !== 'today' && tab !== 'next5' && markedDownItems.length > 0 && <div>
+            <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-amber-700"><Percent size={15}/>Marked Down — Recheck Required</h3>
+            <div className="space-y-1.5">{markedDownItems.map(item => <Card key={item.id} item={item} onStatus={updateStatus} showLegend={item.id === firstCardId}/>)}</div>
+          </div>}
           {tab !== 'marked_down' && buckets.length > 0 && <div>
             <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700"><ClipboardList size={15} className="text-slate-400"/>Needs Initial Action</h3>
             <div className="space-y-4">{buckets.map(({ label, items }) => label === 'LATER'
@@ -121,21 +138,17 @@ export function DashboardPage() {
                   <div className="space-y-1.5">{items.map(item => <Card key={item.id} item={item} onStatus={updateStatus} showLegend={item.id === firstCardId}/>)}</div>
                 </div>)}</div>
           </div>}
-          {tab !== 'today' && tab !== 'next5' && markedDownItems.length > 0 && <div>
-            <h3 className="mb-2 text-sm font-bold text-amber-700">Marked Down — Recheck Required</h3>
-            <div className="space-y-1.5">{markedDownItems.map(item => <Card key={item.id} item={item} onStatus={updateStatus} showLegend={item.id === firstCardId}/>)}</div>
-          </div>}
           {(tab === 'cleared' || tab === 'removed') && <div className="space-y-1.5">{doneItems.map(item => <Card key={item.id} item={item} onStatus={updateStatus}/>)}</div>}
         </>}
     </section>
   </AppShell>
 }
 
-function StatPill({ label, value, tone }: { label: string; value: number; tone: string }) {
-  return <div className={`rounded-lg px-1.5 py-1.5 text-center ${tone}`}>
+function StatPill({ label, value, tone, onClick }: { label: string; value: number; tone: string; onClick?: () => void }) {
+  return <button type="button" onClick={onClick} className={`rounded-lg px-1.5 py-1.5 text-center transition active:scale-95 ${tone}`}>
     <p className="text-base font-black leading-none sm:text-xl">{value}</p>
     <p className="mt-0.5 truncate text-[10px] font-semibold leading-tight sm:text-xs">{label}</p>
-  </div>
+  </button>
 }
 
 const ICON_BUTTON_TONES = { default: 'border border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200', danger: 'border border-red-200 bg-red-50 text-red-600 hover:bg-red-100', success: 'border border-green-200 bg-green-50 text-green-600 hover:bg-green-100' } as const
@@ -170,11 +183,13 @@ function QtyBadge({ quantity }: { quantity: number }) {
 function Card({ item, onStatus, showLegend = false }: { item: DashboardEntry; onStatus: (id: string, status: ProductStatus, recheckAt?: Date) => void; showLegend?: boolean }) {
   const days = daysUntil(item.expirationDate)
   const isDone = item.status === 'cleared' || item.status === 'removed'
-  const tone = item.status === 'marked_down' ? 'orange' : isDone ? 'slate' : bucketTone(days)
+  const urgentRecheck = item.status === 'marked_down' && recheckDue(item)
+  const tone = urgentRecheck ? 'red' : item.status === 'marked_down' ? 'orange' : isDone ? 'slate' : bucketTone(days)
   const [bar] = TONE_CLASSES[tone]
   const [markingDown, setMarkingDown] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const [recheckDate, setRecheckDate] = useState(new Date(Date.now() + 86400000).toISOString().slice(0, 10))
-  const meta = `${item.department} · ${shortDate(item.expirationDate)}${item.status === 'marked_down' && item.recheckAt ? ` · Recheck ${shortDate(item.recheckAt)}` : ''}`
+  const meta = `${item.department} · ${shortDate(item.expirationDate)}${item.status === 'marked_down' && item.recheckAt ? ` · Recheck ${shortDate(item.recheckAt)}${urgentRecheck ? ' (due now)' : ''}` : ''}`
 
   return <article className={`overflow-hidden rounded-xl bg-white shadow-card ${isDone ? 'opacity-70' : ''}`}>
     {showLegend && !markingDown && <div className="flex justify-end gap-1.5 border-b border-slate-100 bg-slate-50 pb-1 pr-2.5 pt-1.5 text-[8px] font-bold uppercase tracking-wide text-slate-400">
@@ -184,10 +199,13 @@ function Card({ item, onStatus, showLegend = false }: { item: DashboardEntry; on
     </div>}
     <div className="flex items-stretch gap-2.5 pr-2.5">
       <div className={`w-1.5 shrink-0 ${bar}`}/>
-      <div className="min-w-0 flex-1 py-2">
-        <h4 className="truncate text-sm font-bold text-slate-900">{item.productName}</h4>
-        <p className="truncate text-xs text-slate-500">{meta}</p>
-      </div>
+      <button type="button" onClick={() => setExpanded(v => !v)} className="flex min-w-0 flex-1 items-start gap-1.5 py-2 text-left">
+        <div className="min-w-0 flex-1">
+          <h4 className="text-sm font-bold leading-snug text-slate-900">{item.productName}</h4>
+          <p className="truncate text-xs text-slate-500">{meta}</p>
+        </div>
+        <ChevronDown size={15} className={`mt-0.5 shrink-0 text-slate-400 transition-transform ${expanded ? 'rotate-180' : ''}`}/>
+      </button>
 
       <div className="flex shrink-0 items-center"><QtyBadge quantity={item.quantity} /></div>
 
@@ -204,6 +222,12 @@ function Card({ item, onStatus, showLegend = false }: { item: DashboardEntry; on
         {item.status === 'cleared' ? <CheckCircle2 size={16}/> : <XCircle size={16}/>}
       </div>}
     </div>
+    {expanded && <div className="border-t border-slate-100 bg-slate-50 px-3 py-2.5 text-sm">
+      <p className="font-mono text-xs font-semibold tracking-wide text-slate-600">UPC: {item.upc || '—'}</p>
+      <p className="mt-1 text-slate-700">{item.description || item.productName}</p>
+      {(item.vendorCode || item.subDepartment) && <p className="mt-1 text-xs text-slate-500">{[item.vendorCode && `Vendor ${item.vendorCode}`, item.subDepartment].filter(Boolean).join(' · ')}</p>}
+      <Link to={`/products/${item.productId}`} className="mt-2 inline-block text-xs font-bold text-brand-600 underline">Open full product page →</Link>
+    </div>}
     {item.status === 'active' && markingDown && <div className="border-t border-slate-100 bg-amber-50 p-3">
       <label className="text-xs font-semibold text-amber-800">Recheck date<input type="date" className="mt-1 w-full rounded-lg border p-2 text-sm" value={recheckDate} onChange={e => setRecheckDate(e.target.value)} /></label>
       <div className="mt-2 flex gap-2"><Button variant="secondary" className="min-h-8 flex-1 px-2 text-xs" onClick={() => setMarkingDown(false)}>Cancel</Button><Button className="min-h-8 flex-1 px-2 text-xs" onClick={() => onStatus(item.id, 'marked_down', new Date(`${recheckDate}T12:00:00`))}>Confirm</Button></div>
