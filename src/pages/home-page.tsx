@@ -7,12 +7,13 @@ import { getDashboardEntries } from '../services/product-service'
 import type { CodeDateCheck, DashboardEntry } from '../types/domain'
 
 const daysUntil = (date: Date) => Math.ceil((new Date(date).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000)
+const recheckDue = (item: DashboardEntry) => item.status === 'marked_down' && item.recheckAt != null && daysUntil(item.recheckAt) <= 0
 
 const STAT_TILES = [
-  { key: 'overdue', label: 'Overdue', icon: AlertTriangle, tone: 'bg-red-50 text-red-700' },
-  { key: 'today', label: 'Due Today', icon: CalendarClock, tone: 'bg-orange-50 text-orange-700' },
-  { key: 'week', label: 'Due This Week', icon: ClipboardList, tone: 'bg-yellow-50 text-yellow-800' },
-  { key: 'markedDown', label: 'Marked Down', icon: TrendingDown, tone: 'bg-amber-50 text-amber-800' },
+  { key: 'overdue', label: 'Overdue', icon: AlertTriangle, tone: 'bg-red-50 text-red-700', tab: 'today' },
+  { key: 'today', label: 'Due Today', icon: CalendarClock, tone: 'bg-orange-50 text-orange-700', tab: 'today' },
+  { key: 'week', label: 'Due This Week', icon: ClipboardList, tone: 'bg-yellow-50 text-yellow-800', tab: 'next5' },
+  { key: 'markedDown', label: 'Marked Down', icon: TrendingDown, tone: 'bg-amber-50 text-amber-800', tab: 'marked_down' },
 ] as const
 
 export function HomePage() {
@@ -34,6 +35,7 @@ export function HomePage() {
     week: entries.filter(e => e.status === 'active' && daysUntil(e.expirationDate) > 0 && daysUntil(e.expirationDate) <= 6).length,
     markedDown: entries.filter(e => e.status === 'marked_down').length,
   }
+  const recheckDueCount = entries.filter(recheckDue).length
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-brand-50 to-white p-5">
@@ -46,13 +48,20 @@ export function HomePage() {
           </div>
         </div>
 
+        {!loading && recheckDueCount > 0 && (
+          <Link to="/dashboard?tab=marked_down" className="mb-4 flex items-center justify-between gap-2 rounded-2xl border-2 border-amber-400 bg-amber-100 px-4 py-3 text-sm font-bold text-amber-900 shadow-sm animate-pulse">
+            <span className="flex items-center gap-2"><TrendingDown size={16} />{recheckDueCount} marked-down item{recheckDueCount === 1 ? '' : 's'} due for recheck</span>
+            <ArrowRight size={16} className="shrink-0" />
+          </Link>
+        )}
+
         <div className="mb-6 grid grid-cols-2 gap-3">
           {STAT_TILES.map(tile => (
-            <div key={tile.key} className={`rounded-2xl p-4 ${tile.tone}`}>
+            <Link key={tile.key} to={`/dashboard?tab=${tile.tab}`} className={`rounded-2xl p-4 transition active:scale-95 ${tile.tone}`}>
               <tile.icon size={18} />
               <p className="mt-2 text-2xl font-black leading-none">{loading ? '–' : counts[tile.key]}</p>
               <p className="mt-1 text-xs font-semibold">{tile.label}</p>
-            </div>
+            </Link>
           ))}
         </div>
 
