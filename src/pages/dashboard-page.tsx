@@ -6,6 +6,9 @@ import { Button } from '../components/ui/button'
 import { addOrIncrementCodeDate, getDashboardEntries, setCodeDateStatus } from '../services/product-service'
 import type { DashboardEntry, ProductStatus } from '../types/domain'
 
+const currentMonth = () => new Date().toISOString().slice(0, 7)
+const formatMonth = (month: string) => month ? new Date(`${month}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'an earlier month'
+
 type Tab = 'all' | 'today' | 'next5' | 'marked_down' | 'cleared' | 'removed'
 const TABS: { id: Tab; label: string }[] = [{ id: 'all', label: 'All active' }, { id: 'today', label: 'Today' }, { id: 'next5', label: 'Next 5 Days' }, { id: 'marked_down', label: 'Marked Down' }, { id: 'cleared', label: 'Cleared' }, { id: 'removed', label: 'Removed' }]
 const OPERATIONAL_STATUSES: ProductStatus[] = ['active', 'marked_down']
@@ -208,6 +211,8 @@ function Card({ item, onStatus, onAddDate, showLegend = false }: { item: Dashboa
   const [recheckDate, setRecheckDate] = useState(new Date(Date.now() + 86400000).toISOString().slice(0, 10))
   const [newExpiry, setNewExpiry] = useState(''); const [newQuantity, setNewQuantity] = useState('1')
   const meta = `${item.department} · ${shortDate(item.expirationDate)}${item.status === 'marked_down' && item.recheckAt ? ` · Recheck ${shortDate(item.recheckAt)}${urgentRecheck ? ' (due now)' : ''}` : ''}`
+  // A quick re-add only reuses this item's own Code Date Check while that check's month is still the current one — once the calendar rolls over, stapling a new-month item onto last month's check would make that check's records/export messy, so it should get a fresh check instead.
+  const sameMonthAsCheck = item.codeDateCheckMonth === currentMonth()
   function submitNewDate() { if (!newExpiry || !onAddDate) return; onAddDate(item, new Date(`${newExpiry}T12:00:00`), Number(newQuantity) || 1); setAddingDate(false); setNewExpiry(''); setNewQuantity('1') }
 
   return <article className={`overflow-hidden rounded-xl bg-white shadow-card ${isDone ? 'opacity-70' : ''}`}>
@@ -252,13 +257,20 @@ function Card({ item, onStatus, onAddDate, showLegend = false }: { item: Dashboa
       <label className="text-xs font-semibold text-amber-800">Recheck date<input type="date" className="mt-1 w-full rounded-lg border p-2 text-sm" value={recheckDate} onChange={e => setRecheckDate(e.target.value)} /></label>
       <div className="mt-2 flex gap-2"><Button variant="secondary" className="min-h-8 flex-1 px-2 text-xs" onClick={() => setMarkingDown(false)}>Cancel</Button><Button className="min-h-8 flex-1 px-2 text-xs" onClick={() => onStatus(item.id, 'marked_down', new Date(`${recheckDate}T12:00:00`))}>Confirm</Button></div>
     </div>}
-    {isDone && addingDate && <div className="border-t border-slate-100 bg-brand-50 p-3">
+    {isDone && addingDate && sameMonthAsCheck && <div className="border-t border-slate-100 bg-brand-50 p-3">
       <p className="mb-2 text-xs font-semibold text-brand-800">New stock arrived? Add a fresh date for this product.</p>
       <div className="grid grid-cols-2 gap-2">
         <label className="text-xs font-semibold text-brand-800">Expiration date<input type="date" className="mt-1 w-full rounded-lg border p-2 text-sm" value={newExpiry} onChange={e => setNewExpiry(e.target.value)} autoFocus /></label>
         <label className="text-xs font-semibold text-brand-800">Quantity<input type="number" min="1" className="mt-1 w-full rounded-lg border p-2 text-sm" value={newQuantity} onChange={e => setNewQuantity(e.target.value)} /></label>
       </div>
       <div className="mt-2 flex gap-2"><Button variant="secondary" className="min-h-8 flex-1 px-2 text-xs" onClick={() => setAddingDate(false)}>Cancel</Button><Button className="min-h-8 flex-1 px-2 text-xs" disabled={!newExpiry} onClick={submitNewDate}>Save</Button></div>
+    </div>}
+    {isDone && addingDate && !sameMonthAsCheck && <div className="border-t border-slate-100 bg-slate-50 p-3">
+      <p className="text-xs font-semibold text-slate-700">This item's check was for {formatMonth(item.codeDateCheckMonth)} — adding a date now belongs on a new month's check instead, so this one's records stay clean.</p>
+      <div className="mt-2 flex gap-2">
+        <Button variant="secondary" className="min-h-8 flex-1 px-2 text-xs" onClick={() => setAddingDate(false)}>Cancel</Button>
+        <Link to="/checks/new" className="flex-1"><Button className="min-h-8 w-full px-2 text-xs">Start new Code Date Check</Button></Link>
+      </div>
     </div>}
   </article>
 }

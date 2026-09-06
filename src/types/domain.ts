@@ -57,6 +57,8 @@ export interface DashboardEntry {
   department: string
   codeDateCheckId: string
   codeDateCheckName: string
+  /** The check's audit month, `YYYY-MM` (matches the `<input type="month">` value it was created with) — used to keep a quick re-added date from being filed under a check for a month that's already over. */
+  codeDateCheckMonth: string
   createdAt?: Date
 }
 

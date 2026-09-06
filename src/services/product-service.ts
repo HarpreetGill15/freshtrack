@@ -131,6 +131,7 @@ async function joinCodeDates(codeDates: CodeDate[]): Promise<DashboardEntry[]> {
       department: String(check?.department ?? 'Unassigned'),
       codeDateCheckId: codeDate.codeDateCheckId,
       codeDateCheckName: String(check?.name ?? ''),
+      codeDateCheckMonth: String(check?.month ?? ''),
       createdAt: codeDate.createdAt,
     }
   })

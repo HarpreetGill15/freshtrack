@@ -57,6 +57,7 @@ const STEPS: Step[] = [
       'On any card, tap the green check to mark it Sold (cleared), or the red trash icon to mark it Removed.',
       'The item moves to the "Cleared" or "Removed" tab and disappears from the active/marked-down lists immediately.',
       'New stock arrived with a different date after you cleared or removed an item? Open the Cleared or Removed tab, find the item, and tap the small "+" button on its card — it lets you add a new expiration date and quantity for that same product in a couple of taps, without starting a new scan.',
+      'That quick "+" only works while the item\'s check is still for the current month. Once the calendar rolls into a new month, it\'ll prompt you to start a new Code Date Check instead, so months don\'t get mixed together in one check\'s records.',
     ],
   },
   {
