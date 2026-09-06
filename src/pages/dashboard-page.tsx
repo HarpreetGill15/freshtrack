@@ -1,9 +1,9 @@
-import { CalendarDays, Check, CheckCircle2, ChevronDown, ClipboardList, Percent, Search, Trash2, XCircle } from 'lucide-react'
+import { CalendarDays, Check, CheckCircle2, ChevronDown, ClipboardList, Percent, Plus, Search, Trash2, XCircle } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { AppShell } from '../components/app-shell'
 import { Button } from '../components/ui/button'
-import { getDashboardEntries, setCodeDateStatus } from '../services/product-service'
+import { addOrIncrementCodeDate, getDashboardEntries, setCodeDateStatus } from '../services/product-service'
 import type { DashboardEntry, ProductStatus } from '../types/domain'
 
 type Tab = 'all' | 'today' | 'next5' | 'marked_down' | 'cleared' | 'removed'
@@ -49,8 +49,24 @@ export function DashboardPage() {
     getDashboardEntries([tab]).then(setResolved).catch(e => setError(e instanceof Error ? e.message : 'Could not load.')).finally(() => setLoading(false))
   }, [tab])
 
+  /** Updates the card on screen immediately instead of waiting on a write + a full dashboard reload — the previous round-trip-then-refetch approach is what made every Sold/Removed/Mark down tap feel laggy. Rolls back if the write actually fails. */
   async function updateStatus(id: string, status: ProductStatus, recheckAt?: Date) {
-    try { await setCodeDateStatus(id, status, recheckAt); await loadOperational() } catch (e) { setError(e instanceof Error ? e.message : 'Could not update status.') }
+    let previous: DashboardEntry | undefined
+    setOperational(items => items.map(item => { if (item.id !== id) return item; previous = item; return { ...item, status, recheckAt } }))
+    try { await setCodeDateStatus(id, status, recheckAt) }
+    catch (e) {
+      if (previous) { const restored = previous; setOperational(items => items.map(item => item.id === id ? restored : item)) }
+      setError(e instanceof Error ? e.message : 'Could not update status.')
+    }
+  }
+
+  /** Quick re-add for an item that was already sold/removed (e.g. new stock came in with a fresh expiration) — appends the new date to the same Code Date Check the item came from, no need to start a new scan session. */
+  async function addDate(item: DashboardEntry, expirationDate: Date, quantity: number) {
+    try {
+      const result = await addOrIncrementCodeDate({ productId: item.productId, codeDateCheckId: item.codeDateCheckId, expirationDate, quantity })
+      if (result.merged) setOperational(items => items.map(i => i.id === result.id ? { ...i, quantity: result.quantity } : i))
+      else setOperational(items => [...items, { ...item, id: result.id, status: 'active', quantity, expirationDate, recheckAt: undefined, createdAt: new Date() }])
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not add a new date.') }
   }
 
   const source = tab === 'cleared' || tab === 'removed' ? resolved : operational
@@ -138,7 +154,7 @@ export function DashboardPage() {
                   <div className="space-y-1.5">{items.map(item => <Card key={item.id} item={item} onStatus={updateStatus} showLegend={item.id === firstCardId}/>)}</div>
                 </div>)}</div>
           </div>}
-          {(tab === 'cleared' || tab === 'removed') && <div className="space-y-1.5">{doneItems.map(item => <Card key={item.id} item={item} onStatus={updateStatus}/>)}</div>}
+          {(tab === 'cleared' || tab === 'removed') && <div className="space-y-1.5">{doneItems.map(item => <Card key={item.id} item={item} onStatus={updateStatus} onAddDate={addDate}/>)}</div>}
         </>}
     </section>
   </AppShell>
@@ -180,7 +196,7 @@ function QtyBadge({ quantity }: { quantity: number }) {
   </div>
 }
 
-function Card({ item, onStatus, showLegend = false }: { item: DashboardEntry; onStatus: (id: string, status: ProductStatus, recheckAt?: Date) => void; showLegend?: boolean }) {
+function Card({ item, onStatus, onAddDate, showLegend = false }: { item: DashboardEntry; onStatus: (id: string, status: ProductStatus, recheckAt?: Date) => void; onAddDate?: (item: DashboardEntry, expirationDate: Date, quantity: number) => void; showLegend?: boolean }) {
   const days = daysUntil(item.expirationDate)
   const isDone = item.status === 'cleared' || item.status === 'removed'
   const urgentRecheck = item.status === 'marked_down' && recheckDue(item)
@@ -188,8 +204,11 @@ function Card({ item, onStatus, showLegend = false }: { item: DashboardEntry; on
   const [bar] = TONE_CLASSES[tone]
   const [markingDown, setMarkingDown] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const [addingDate, setAddingDate] = useState(false)
   const [recheckDate, setRecheckDate] = useState(new Date(Date.now() + 86400000).toISOString().slice(0, 10))
+  const [newExpiry, setNewExpiry] = useState(''); const [newQuantity, setNewQuantity] = useState('1')
   const meta = `${item.department} · ${shortDate(item.expirationDate)}${item.status === 'marked_down' && item.recheckAt ? ` · Recheck ${shortDate(item.recheckAt)}${urgentRecheck ? ' (due now)' : ''}` : ''}`
+  function submitNewDate() { if (!newExpiry || !onAddDate) return; onAddDate(item, new Date(`${newExpiry}T12:00:00`), Number(newQuantity) || 1); setAddingDate(false); setNewExpiry(''); setNewQuantity('1') }
 
   return <article className={`overflow-hidden rounded-xl bg-white shadow-card ${isDone ? 'opacity-70' : ''}`}>
     {showLegend && !markingDown && <div className="flex justify-end gap-1.5 border-b border-slate-100 bg-slate-50 pb-1 pr-2.5 pt-1.5 text-[8px] font-bold uppercase tracking-wide text-slate-400">
@@ -218,8 +237,9 @@ function Card({ item, onStatus, showLegend = false }: { item: DashboardEntry; on
         <IconButton label="Cleared" tone="success" onClick={() => onStatus(item.id, 'cleared')}><Check size={15}/></IconButton>
         <IconButton label="Removed" tone="danger" onClick={() => onStatus(item.id, 'removed')}><Trash2 size={15}/></IconButton>
       </div>}
-      {isDone && <div className="flex shrink-0 items-center pr-0.5 text-slate-400">
+      {isDone && !addingDate && <div className="flex shrink-0 items-center gap-1.5 pr-0.5 text-slate-400">
         {item.status === 'cleared' ? <CheckCircle2 size={16}/> : <XCircle size={16}/>}
+        {onAddDate && <IconButton label="Add new date" onClick={() => setAddingDate(true)}><Plus size={15}/></IconButton>}
       </div>}
     </div>
     {expanded && <div className="border-t border-slate-100 bg-slate-50 px-3 py-2.5 text-sm">
@@ -231,6 +251,14 @@ function Card({ item, onStatus, showLegend = false }: { item: DashboardEntry; on
     {item.status === 'active' && markingDown && <div className="border-t border-slate-100 bg-amber-50 p-3">
       <label className="text-xs font-semibold text-amber-800">Recheck date<input type="date" className="mt-1 w-full rounded-lg border p-2 text-sm" value={recheckDate} onChange={e => setRecheckDate(e.target.value)} /></label>
       <div className="mt-2 flex gap-2"><Button variant="secondary" className="min-h-8 flex-1 px-2 text-xs" onClick={() => setMarkingDown(false)}>Cancel</Button><Button className="min-h-8 flex-1 px-2 text-xs" onClick={() => onStatus(item.id, 'marked_down', new Date(`${recheckDate}T12:00:00`))}>Confirm</Button></div>
+    </div>}
+    {isDone && addingDate && <div className="border-t border-slate-100 bg-brand-50 p-3">
+      <p className="mb-2 text-xs font-semibold text-brand-800">New stock arrived? Add a fresh date for this product.</p>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="text-xs font-semibold text-brand-800">Expiration date<input type="date" className="mt-1 w-full rounded-lg border p-2 text-sm" value={newExpiry} onChange={e => setNewExpiry(e.target.value)} autoFocus /></label>
+        <label className="text-xs font-semibold text-brand-800">Quantity<input type="number" min="1" className="mt-1 w-full rounded-lg border p-2 text-sm" value={newQuantity} onChange={e => setNewQuantity(e.target.value)} /></label>
+      </div>
+      <div className="mt-2 flex gap-2"><Button variant="secondary" className="min-h-8 flex-1 px-2 text-xs" onClick={() => setAddingDate(false)}>Cancel</Button><Button className="min-h-8 flex-1 px-2 text-xs" disabled={!newExpiry} onClick={submitNewDate}>Save</Button></div>
     </div>}
   </article>
 }

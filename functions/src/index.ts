@@ -2,7 +2,7 @@ import { initializeApp } from 'firebase-admin/app'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import { logger } from 'firebase-functions'
 import { onRequest } from 'firebase-functions/v2/https'
-import { onSchedule, type ScheduledEvent } from 'firebase-functions/v2/scheduler'
+import { onSchedule } from 'firebase-functions/v2/scheduler'
 import { Resend } from 'resend'
 initializeApp()
 const database = getFirestore()
@@ -80,7 +80,7 @@ async function buildAndSendReminders() {
   return { sent: true, count: rows.length }
 }
 
-export const sendExpiryReminders = onSchedule({ schedule: '0 7 * * *', timeZone: 'America/Toronto', secrets: ['RESEND_API_KEY', 'REMINDER_TO_EMAIL', 'RESEND_FROM_EMAIL'] }, async (_event: ScheduledEvent) => { await buildAndSendReminders() })
+export const sendExpiryReminders = onSchedule({ schedule: '0 7 * * *', timeZone: 'America/Toronto', secrets: ['RESEND_API_KEY', 'REMINDER_TO_EMAIL', 'RESEND_FROM_EMAIL'] }, async () => { await buildAndSendReminders() })
 
 /**
  * Manual test trigger — lets you fire the exact same reminder email on demand while setting this

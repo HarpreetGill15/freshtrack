@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, getDoc, getDocs, orderBy, query, serverTimestamp, setDoc, updateDoc, where, type FieldValue } from 'firebase/firestore'
+import { addDoc, collection, doc, documentId, getDoc, getDocs, orderBy, query, serverTimestamp, setDoc, updateDoc, where, type FieldValue } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { normalizeScannedUpc, normalizeUpc } from '../lib/upc'
 import type { CodeDate, DashboardEntry, Product, ProductStatus } from '../types/domain'
@@ -86,17 +86,31 @@ export async function setCodeDateStatus(codeDateId: string, status: ProductStatu
   await updateDoc(doc(database(), 'codeDates', codeDateId), payload)
 }
 
+/**
+ * Fetches many documents by ID in batched `documentId() in [...]` queries (chunks of 30, Firestore's
+ * `in` limit) instead of one `getDoc` per ID — a dashboard with dozens of distinct products was
+ * previously firing that many individual round trips on every load, which is what made the list slow
+ * to appear (and slow to refresh after every mark-down/sold/removed tap) on spotty store wifi.
+ */
+async function getDocsByIds(firestore: ReturnType<typeof database>, collectionName: string, ids: string[]) {
+  const map = new Map<string, Record<string, unknown>>()
+  if (!ids.length) return map
+  const chunks: string[][] = []
+  for (let i = 0; i < ids.length; i += 30) chunks.push(ids.slice(i, i + 30))
+  const snapshots = await Promise.all(chunks.map(chunk => getDocs(query(collection(firestore, collectionName), where(documentId(), 'in', chunk)))))
+  for (const snapshot of snapshots) for (const item of snapshot.docs) map.set(item.id, item.data())
+  return map
+}
+
 async function joinCodeDates(codeDates: CodeDate[]): Promise<DashboardEntry[]> {
   if (!codeDates.length) return []
   const firestore = database()
   const productIds = [...new Set(codeDates.map(item => item.productId))]
   const checkIds = [...new Set(codeDates.map(item => item.codeDateCheckId))]
-  const [productDocs, checkDocs] = await Promise.all([
-    Promise.all(productIds.map(id => getDoc(doc(firestore, 'products', id)))),
-    Promise.all(checkIds.map(id => getDoc(doc(firestore, 'codeDateChecks', id)))),
+  const [products, checks] = await Promise.all([
+    getDocsByIds(firestore, 'products', productIds),
+    getDocsByIds(firestore, 'codeDateChecks', checkIds),
   ])
-  const products = new Map(productDocs.filter(item => item.exists()).map(item => [item.id, item.data()]))
-  const checks = new Map(checkDocs.filter(item => item.exists()).map(item => [item.id, item.data()]))
 
   return codeDates.map(codeDate => {
     const product = products.get(codeDate.productId)
