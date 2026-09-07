@@ -13,6 +13,10 @@ export default defineConfig({
       // that for the remaining (still sizeable — firebase + xlsx + zxing) main chunk.
       globIgnores: ['**/pdf-import-*.js', '**/pdf.worker-*.js'],
       maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+      // Without this, the SPA-fallback navigation handler below also intercepts /api/* — a browser
+      // tab hitting /api/reminders after the service worker is installed gets the cached app shell
+      // instead of the real serverless response, which is exactly what happened testing this by hand.
+      navigateFallbackDenylist: [/^\/api\//],
     },
     manifest: { name: 'FreshTrack', short_name: 'FreshTrack', description: 'Grocery expiry management', theme_color: '#0d6b4f', background_color: '#f7faf8', display: 'standalone', start_url: '/', icons: [{ src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }] },
   })],
