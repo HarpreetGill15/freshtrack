@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { CheckFinishPage } from './pages/check-finish-page'
 import { ChecksListPage } from './pages/checks-list-page'
 import { DashboardPage } from './pages/dashboard-page'
+import { HelpPage } from './pages/help-page'
 import { HomePage } from './pages/home-page'
 import { LoginPage } from './pages/login-page'
 import { ScanPage } from './pages/scan-page'
@@ -21,6 +22,7 @@ export default function App() {
       <Route path="/checks/finish" element={<CheckFinishPage />} />
       <Route path="/scan" element={<ScanPage />} />
       <Route path="/products/:productId" element={<ProductDetailsPage />} />
+      <Route path="/help" element={<HelpPage />} />
 
       {/* Back-office views remain gated behind sign-in. */}
       <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
