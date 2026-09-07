@@ -137,6 +137,23 @@ async function joinCodeDates(codeDates: CodeDate[]): Promise<DashboardEntry[]> {
   })
 }
 
+/**
+ * All-time Sold-vs-Removed totals for the dashboard's impact card. Reads only `quantity`/`status`
+ * off each codeDates doc rather than joining products/checks (getDashboardEntries' N+1 lookups) —
+ * the impact numbers don't need product names, so there's no reason to pay for those extra reads.
+ */
+export async function getDiversionStats() {
+  const snapshot = await getDocs(query(collection(database(), 'codeDates'), where('status', 'in', ['cleared', 'removed'])))
+  let soldUnits = 0, soldRecords = 0, removedUnits = 0, removedRecords = 0
+  for (const item of snapshot.docs) {
+    const data = item.data()
+    const quantity = typeof data.quantity === 'number' ? data.quantity : 0
+    if (data.status === 'cleared') { soldUnits += quantity; soldRecords++ }
+    else if (data.status === 'removed') { removedUnits += quantity; removedRecords++ }
+  }
+  return { soldUnits, soldRecords, removedUnits, removedRecords }
+}
+
 /** Dashboard data source. Defaults to the operational view (active + marked_down); pass an explicit status list for the Cleared/Removed filter tabs. */
 export async function getDashboardEntries(statuses: ProductStatus[] = ['active', 'marked_down']): Promise<DashboardEntry[]> {
   const snapshot = await getDocs(query(collection(database(), 'codeDates'), where('status', 'in', statuses), orderBy('expirationDate')))
