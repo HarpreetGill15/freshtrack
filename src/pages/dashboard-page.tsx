@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { Link, useSearchParams } from 'react-router-dom'
 import { AppShell } from '../components/app-shell'
 import { Button } from '../components/ui/button'
-import { addOrIncrementCodeDate, getDashboardEntries, setCodeDateStatus } from '../services/product-service'
+import { addOrIncrementCodeDate, getDashboardEntries, getDiversionStats, setCodeDateStatus } from '../services/product-service'
 import type { DashboardEntry, ProductStatus } from '../types/domain'
 
 const currentMonth = () => new Date().toISOString().slice(0, 7)
@@ -40,12 +40,14 @@ export function DashboardPage() {
   const setTab = useCallback((next: Tab) => { setTabState(next); setSearchParams(next === 'all' ? {} : { tab: next }, { replace: true }) }, [setSearchParams])
   const [operational, setOperational] = useState<DashboardEntry[]>([])
   const [resolved, setResolved] = useState<DashboardEntry[]>([])
+  const [diversion, setDiversion] = useState({ soldUnits: 0, soldRecords: 0, removedUnits: 0, removedRecords: 0 })
   const [search, setSearch] = useState(''); const [department, setDepartment] = useState('all')
   const [loading, setLoading] = useState(true); const [error, setError] = useState('')
 
   const loadOperational = useCallback(async () => { try { setOperational(await getDashboardEntries(OPERATIONAL_STATUSES)); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'Could not load the dashboard.') } }, [])
 
   useEffect(() => { setLoading(true); void loadOperational().finally(() => setLoading(false)) }, [loadOperational])
+  useEffect(() => { void getDiversionStats().then(setDiversion).catch(() => {}) }, [])
   useEffect(() => {
     if (tab !== 'cleared' && tab !== 'removed') return
     setLoading(true)
@@ -56,9 +58,13 @@ export function DashboardPage() {
   async function updateStatus(id: string, status: ProductStatus, recheckAt?: Date) {
     let previous: DashboardEntry | undefined
     setOperational(items => items.map(item => { if (item.id !== id) return item; previous = item; return { ...item, status, recheckAt } }))
+    if (status === 'cleared') setDiversion(d => ({ ...d, soldUnits: d.soldUnits + (previous?.quantity ?? 0), soldRecords: d.soldRecords + 1 }))
+    else if (status === 'removed') setDiversion(d => ({ ...d, removedUnits: d.removedUnits + (previous?.quantity ?? 0), removedRecords: d.removedRecords + 1 }))
     try { await setCodeDateStatus(id, status, recheckAt) }
     catch (e) {
       if (previous) { const restored = previous; setOperational(items => items.map(item => item.id === id ? restored : item)) }
+      if (status === 'cleared') setDiversion(d => ({ ...d, soldUnits: d.soldUnits - (previous?.quantity ?? 0), soldRecords: d.soldRecords - 1 }))
+      else if (status === 'removed') setDiversion(d => ({ ...d, removedUnits: d.removedUnits - (previous?.quantity ?? 0), removedRecords: d.removedRecords - 1 }))
       setError(e instanceof Error ? e.message : 'Could not update status.')
     }
   }
@@ -122,6 +128,23 @@ export function DashboardPage() {
       <span className="flex items-center gap-2"><Percent size={16}/>{stats.recheckDue} marked-down item{stats.recheckDue === 1 ? '' : 's'} due for recheck now</span>
       <span className="shrink-0 underline">Review →</span>
     </button>}
+
+    {(diversion.soldUnits + diversion.removedUnits) > 0 && <div className="mt-3 rounded-2xl bg-white p-4 shadow-card">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-bold text-slate-700">Impact so far</h3>
+        <span className="text-xs font-bold text-brand-600">{Math.round((diversion.soldUnits / (diversion.soldUnits + diversion.removedUnits)) * 100)}% sold instead of wasted</span>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <button onClick={() => setTab('cleared')} className="rounded-xl bg-brand-50 p-3 text-left transition active:scale-95">
+          <p className="text-2xl font-black leading-none text-brand-700">{diversion.soldUnits}</p>
+          <p className="mt-1 text-xs font-semibold text-brand-700">Units sold via markdown</p>
+        </button>
+        <button onClick={() => setTab('removed')} className="rounded-xl bg-slate-100 p-3 text-left transition active:scale-95">
+          <p className="text-2xl font-black leading-none text-slate-600">{diversion.removedUnits}</p>
+          <p className="mt-1 text-xs font-semibold text-slate-500">Units removed</p>
+        </button>
+      </div>
+    </div>}
 
     <div className="mt-4 flex gap-2 overflow-x-auto pb-1">{TABS.map(t => <button key={t.id} onClick={() => setTab(t.id)} className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${tab === t.id ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'}`}>{t.label}{t.id === 'marked_down' && stats.recheckDue > 0 ? ` (${stats.recheckDue})` : ''}</button>)}</div>
 

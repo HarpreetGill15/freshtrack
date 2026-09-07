@@ -83,6 +83,7 @@ const STEPS: Step[] = [
       'The tabs (All active, Today, Next 5 Days, Marked Down, Cleared, Removed) narrow the list to exactly what you need.',
       'The four stat numbers at the top (Overdue, Due Today, Next 5d, Marked Down) are tappable shortcuts straight into the matching tab.',
       'Use the search box to find a product by name or UPC, and the department buttons to narrow by Produce/Dairy/Meat/etc.',
+      'The "Impact so far" card shows your all-time totals — units sold via markdown vs. units removed, and the percentage saved from waste. Tap either number to jump to that tab.',
     ],
   },
   {
