@@ -43,6 +43,8 @@ export function DashboardPage() {
   const [diversion, setDiversion] = useState({ soldUnits: 0, soldRecords: 0, removedUnits: 0, removedRecords: 0 })
   const [search, setSearch] = useState(''); const [department, setDepartment] = useState('all')
   const [loading, setLoading] = useState(true); const [error, setError] = useState('')
+  const [pendingAddDate, setPendingAddDate] = useState<DashboardEntry | null>(null)
+  const [pendingExpiry, setPendingExpiry] = useState(''); const [pendingQuantity, setPendingQuantity] = useState('1')
 
   const loadOperational = useCallback(async () => { try { setOperational(await getDashboardEntries(OPERATIONAL_STATUSES)); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'Could not load the dashboard.') } }, [])
 
@@ -56,17 +58,25 @@ export function DashboardPage() {
 
   /** Updates the card on screen immediately instead of waiting on a write + a full dashboard reload — the previous round-trip-then-refetch approach is what made every Sold/Removed/Mark down tap feel laggy. Rolls back if the write actually fails. */
   async function updateStatus(id: string, status: ProductStatus, recheckAt?: Date) {
-    let previous: DashboardEntry | undefined
-    setOperational(items => items.map(item => { if (item.id !== id) return item; previous = item; return { ...item, status, recheckAt } }))
+    const previous = operational.find(item => item.id === id)
+    setOperational(items => items.map(item => item.id === id ? { ...item, status, recheckAt } : item))
     if (status === 'cleared') setDiversion(d => ({ ...d, soldUnits: d.soldUnits + (previous?.quantity ?? 0), soldRecords: d.soldRecords + 1 }))
     else if (status === 'removed') setDiversion(d => ({ ...d, removedUnits: d.removedUnits + (previous?.quantity ?? 0), removedRecords: d.removedRecords + 1 }))
+    // Once an item goes Sold/Removed it vanishes from every active/marked-down list, so an inline "add a new date?" prompt on the card itself would never actually be seen — a standalone banner (below) works regardless of which list the item was on. Only offered while the item's check is still for the current month, same rule as the manual "+" on the Cleared/Removed tabs.
+    if ((status === 'cleared' || status === 'removed') && previous && previous.codeDateCheckMonth === currentMonth()) { setPendingAddDate(previous); setPendingExpiry(''); setPendingQuantity('1') }
     try { await setCodeDateStatus(id, status, recheckAt) }
     catch (e) {
-      if (previous) { const restored = previous; setOperational(items => items.map(item => item.id === id ? restored : item)) }
+      if (previous) setOperational(items => items.map(item => item.id === id ? previous : item))
       if (status === 'cleared') setDiversion(d => ({ ...d, soldUnits: d.soldUnits - (previous?.quantity ?? 0), soldRecords: d.soldRecords - 1 }))
       else if (status === 'removed') setDiversion(d => ({ ...d, removedUnits: d.removedUnits - (previous?.quantity ?? 0), removedRecords: d.removedRecords - 1 }))
       setError(e instanceof Error ? e.message : 'Could not update status.')
     }
+  }
+
+  async function confirmPendingAddDate() {
+    if (!pendingAddDate || !pendingExpiry) return
+    await addDate(pendingAddDate, new Date(`${pendingExpiry}T12:00:00`), Number(pendingQuantity) || 1)
+    setPendingAddDate(null)
   }
 
   /** Quick re-add for an item that was already sold/removed (e.g. new stock came in with a fresh expiration) — appends the new date to the same Code Date Check the item came from, no need to start a new scan session. */
@@ -163,7 +173,7 @@ export function DashboardPage() {
         : <>
           {tab !== 'today' && tab !== 'next5' && markedDownItems.length > 0 && <div>
             <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-amber-700"><Percent size={15}/>Marked Down — Recheck Required</h3>
-            <div className="space-y-1.5">{markedDownItems.map(item => <Card key={item.id} item={item} onStatus={updateStatus} showLegend={item.id === firstCardId}/>)}</div>
+            <div className="space-y-1.5">{markedDownItems.map(item => <Card key={item.id} item={item} onStatus={updateStatus} onAddDate={addDate} showLegend={item.id === firstCardId}/>)}</div>
           </div>}
           {tab !== 'marked_down' && buckets.length > 0 && <div>
             <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700"><ClipboardList size={15} className="text-slate-400"/>Needs Initial Action</h3>
@@ -172,17 +182,32 @@ export function DashboardPage() {
                   <div className="mb-1.5 flex items-baseline justify-between"><span className="text-xs font-bold tracking-wide text-slate-500">{label}</span><span className="text-xs text-slate-400">{items.length}</span></div>
                   <div className="space-y-3">{groupByDate(items).map(([dateKey, dateItems]) => <div key={dateKey}>
                     <p className="mb-1 text-xs font-semibold text-slate-400">{shortDate(new Date(dateKey))}</p>
-                    <div className="space-y-1.5">{dateItems.map(item => <Card key={item.id} item={item} onStatus={updateStatus} showLegend={item.id === firstCardId}/>)}</div>
+                    <div className="space-y-1.5">{dateItems.map(item => <Card key={item.id} item={item} onStatus={updateStatus} onAddDate={addDate} showLegend={item.id === firstCardId}/>)}</div>
                   </div>)}</div>
                 </div>
               : <div key={label}>
                   <div className="mb-1.5 flex items-baseline justify-between"><span className="text-xs font-bold tracking-wide text-slate-500">{label}</span><span className="text-xs text-slate-400">{items.length}</span></div>
-                  <div className="space-y-1.5">{items.map(item => <Card key={item.id} item={item} onStatus={updateStatus} showLegend={item.id === firstCardId}/>)}</div>
+                  <div className="space-y-1.5">{items.map(item => <Card key={item.id} item={item} onStatus={updateStatus} onAddDate={addDate} showLegend={item.id === firstCardId}/>)}</div>
                 </div>)}</div>
           </div>}
           {(tab === 'cleared' || tab === 'removed') && <div className="space-y-1.5">{doneItems.map(item => <Card key={item.id} item={item} onStatus={updateStatus} onAddDate={addDate}/>)}</div>}
         </>}
     </section>
+
+    {pendingAddDate && <div className="fixed inset-x-0 bottom-16 z-40 px-4">
+      <div className="mx-auto max-w-3xl rounded-2xl bg-white p-4 shadow-lg ring-1 ring-slate-200">
+        <p className="text-sm font-bold text-slate-900">Got new stock of "{pendingAddDate.productName}"?</p>
+        <p className="mt-0.5 text-xs text-slate-500">Add its date now, or skip.</p>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <label className="text-xs font-semibold text-slate-700">Expiration date<input type="date" className="mt-1 w-full rounded-lg border p-2 text-sm" value={pendingExpiry} onChange={e => setPendingExpiry(e.target.value)} autoFocus/></label>
+          <label className="text-xs font-semibold text-slate-700">Quantity<input type="number" min="1" className="mt-1 w-full rounded-lg border p-2 text-sm" value={pendingQuantity} onChange={e => setPendingQuantity(e.target.value)}/></label>
+        </div>
+        <div className="mt-3 flex gap-2">
+          <Button variant="secondary" className="min-h-9 flex-1 px-2 text-xs" onClick={() => setPendingAddDate(null)}>Skip</Button>
+          <Button className="min-h-9 flex-1 px-2 text-xs" disabled={!pendingExpiry} onClick={() => void confirmPendingAddDate()}>Save</Button>
+        </div>
+      </div>
+    </div>}
   </AppShell>
 }
 
@@ -281,12 +306,12 @@ function Card({ item, onStatus, onAddDate, showLegend = false }: { item: Dashboa
       <div className="mt-2 flex gap-2"><Button variant="secondary" className="min-h-8 flex-1 px-2 text-xs" onClick={() => setMarkingDown(false)}>Cancel</Button><Button className="min-h-8 flex-1 px-2 text-xs" onClick={() => onStatus(item.id, 'marked_down', new Date(`${recheckDate}T12:00:00`))}>Confirm</Button></div>
     </div>}
     {isDone && addingDate && sameMonthAsCheck && <div className="border-t border-slate-100 bg-brand-50 p-3">
-      <p className="mb-2 text-xs font-semibold text-brand-800">New stock arrived? Add a fresh date for this product.</p>
+      <p className="mb-2 text-xs font-semibold text-brand-800">Got new stock of this on the shelf? Add its date now, or skip.</p>
       <div className="grid grid-cols-2 gap-2">
         <label className="text-xs font-semibold text-brand-800">Expiration date<input type="date" className="mt-1 w-full rounded-lg border p-2 text-sm" value={newExpiry} onChange={e => setNewExpiry(e.target.value)} autoFocus /></label>
         <label className="text-xs font-semibold text-brand-800">Quantity<input type="number" min="1" className="mt-1 w-full rounded-lg border p-2 text-sm" value={newQuantity} onChange={e => setNewQuantity(e.target.value)} /></label>
       </div>
-      <div className="mt-2 flex gap-2"><Button variant="secondary" className="min-h-8 flex-1 px-2 text-xs" onClick={() => setAddingDate(false)}>Cancel</Button><Button className="min-h-8 flex-1 px-2 text-xs" disabled={!newExpiry} onClick={submitNewDate}>Save</Button></div>
+      <div className="mt-2 flex gap-2"><Button variant="secondary" className="min-h-8 flex-1 px-2 text-xs" onClick={() => setAddingDate(false)}>Skip</Button><Button className="min-h-8 flex-1 px-2 text-xs" disabled={!newExpiry} onClick={submitNewDate}>Save</Button></div>
     </div>}
     {isDone && addingDate && !sameMonthAsCheck && <div className="border-t border-slate-100 bg-slate-50 p-3">
       <p className="text-xs font-semibold text-slate-700">This item's check was for {formatMonth(item.codeDateCheckMonth)} — adding a date now belongs on a new month's check instead, so this one's records stay clean.</p>
