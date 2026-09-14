@@ -62,8 +62,8 @@ export function DashboardPage() {
     setOperational(items => items.map(item => item.id === id ? { ...item, status, recheckAt } : item))
     if (status === 'cleared') setDiversion(d => ({ ...d, soldUnits: d.soldUnits + (previous?.quantity ?? 0), soldRecords: d.soldRecords + 1 }))
     else if (status === 'removed') setDiversion(d => ({ ...d, removedUnits: d.removedUnits + (previous?.quantity ?? 0), removedRecords: d.removedRecords + 1 }))
-    // Once an item goes Sold/Removed it vanishes from every active/marked-down list, so an inline "add a new date?" prompt on the card itself would never actually be seen — a standalone banner (below) works regardless of which list the item was on. Only offered while the item's check is still for the current month, same rule as the manual "+" on the Cleared/Removed tabs.
-    if ((status === 'cleared' || status === 'removed') && previous && previous.codeDateCheckMonth === currentMonth()) { setPendingAddDate(previous); setPendingExpiry(''); setPendingQuantity('1') }
+    // Once an item goes Sold/Removed it vanishes from every active/marked-down list, so an inline "add a new date?" prompt on the card itself would never actually be seen — a standalone banner (below) works regardless of which list the item was on. Shown for every Sold/Removed action, not just same-month ones — the banner itself branches on month (see render below) so an old-month item (e.g. an overdue recheck from last month's check) still gets the "start a new check" guidance instead of silently showing nothing.
+    if (status === 'cleared' || status === 'removed') { if (previous) { setPendingAddDate(previous); setPendingExpiry(''); setPendingQuantity('1') } }
     try { await setCodeDateStatus(id, status, recheckAt) }
     catch (e) {
       if (previous) setOperational(items => items.map(item => item.id === id ? previous : item))
@@ -194,7 +194,7 @@ export function DashboardPage() {
         </>}
     </section>
 
-    {pendingAddDate && <div className="fixed inset-x-0 bottom-16 z-40 px-4">
+    {pendingAddDate && pendingAddDate.codeDateCheckMonth === currentMonth() && <div className="fixed inset-x-0 bottom-16 z-40 px-4">
       <div className="mx-auto max-w-3xl rounded-2xl bg-white p-4 shadow-lg ring-1 ring-slate-200">
         <p className="text-sm font-bold text-slate-900">Got new stock of "{pendingAddDate.productName}"?</p>
         <p className="mt-0.5 text-xs text-slate-500">Add its date now, or skip.</p>
@@ -205,6 +205,17 @@ export function DashboardPage() {
         <div className="mt-3 flex gap-2">
           <Button variant="secondary" className="min-h-9 flex-1 px-2 text-xs" onClick={() => setPendingAddDate(null)}>Skip</Button>
           <Button className="min-h-9 flex-1 px-2 text-xs" disabled={!pendingExpiry} onClick={() => void confirmPendingAddDate()}>Save</Button>
+        </div>
+      </div>
+    </div>}
+
+    {pendingAddDate && pendingAddDate.codeDateCheckMonth !== currentMonth() && <div className="fixed inset-x-0 bottom-16 z-40 px-4">
+      <div className="mx-auto max-w-3xl rounded-2xl bg-white p-4 shadow-lg ring-1 ring-slate-200">
+        <p className="text-sm font-bold text-slate-900">Got new stock of "{pendingAddDate.productName}"?</p>
+        <p className="mt-1 text-xs text-slate-600">This item's check was for {formatMonth(pendingAddDate.codeDateCheckMonth)} — adding a date now belongs on a new month's check instead, so this one's records stay clean.</p>
+        <div className="mt-3 flex gap-2">
+          <Button variant="secondary" className="min-h-9 flex-1 px-2 text-xs" onClick={() => setPendingAddDate(null)}>Dismiss</Button>
+          <Link to="/checks/new" className="flex-1" onClick={() => setPendingAddDate(null)}><Button className="min-h-9 w-full px-2 text-xs">Start new Code Date Check</Button></Link>
         </div>
       </div>
     </div>}
