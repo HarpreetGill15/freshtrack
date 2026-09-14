@@ -4,10 +4,10 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { AppShell } from '../components/app-shell'
 import { Button } from '../components/ui/button'
 import { addOrIncrementCodeDate, getDashboardEntries, getDiversionStats, setCodeDateStatus } from '../services/product-service'
-import type { DashboardEntry, ProductStatus } from '../types/domain'
+import { findActiveCheckForMonth } from '../services/code-date-check-service'
+import type { CodeDateCheck, DashboardEntry, ProductStatus } from '../types/domain'
 
 const currentMonth = () => new Date().toISOString().slice(0, 7)
-const formatMonth = (month: string) => month ? new Date(`${month}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'an earlier month'
 
 type Tab = 'all' | 'today' | 'next5' | 'marked_down' | 'cleared' | 'removed'
 const TABS: { id: Tab; label: string }[] = [{ id: 'all', label: 'All active' }, { id: 'today', label: 'Today' }, { id: 'next5', label: 'Next 5 Days' }, { id: 'marked_down', label: 'Marked Down' }, { id: 'cleared', label: 'Cleared' }, { id: 'removed', label: 'Removed' }]
@@ -45,6 +45,8 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true); const [error, setError] = useState('')
   const [pendingAddDate, setPendingAddDate] = useState<DashboardEntry | null>(null)
   const [pendingExpiry, setPendingExpiry] = useState(''); const [pendingQuantity, setPendingQuantity] = useState('1')
+  // undefined = still checking, null = confirmed none exists, a check = found one to reuse.
+  const [offMonthTargetCheck, setOffMonthTargetCheck] = useState<CodeDateCheck | null | undefined>(undefined)
 
   const loadOperational = useCallback(async () => { try { setOperational(await getDashboardEntries(OPERATIONAL_STATUSES)); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'Could not load the dashboard.') } }, [])
 
@@ -55,6 +57,14 @@ export function DashboardPage() {
     setLoading(true)
     getDashboardEntries([tab]).then(setResolved).catch(e => setError(e instanceof Error ? e.message : 'Could not load.')).finally(() => setLoading(false))
   }, [tab])
+  // A quick re-date on an item from an older check first checks whether this month/department already has an active check to attach to — that's the common case once a store has run a couple of checks — before ever suggesting "start a new check".
+  useEffect(() => {
+    if (!pendingAddDate || pendingAddDate.codeDateCheckMonth === currentMonth()) { setOffMonthTargetCheck(undefined); return }
+    let cancelled = false
+    setOffMonthTargetCheck(undefined)
+    findActiveCheckForMonth(currentMonth(), pendingAddDate.department).then(check => { if (!cancelled) setOffMonthTargetCheck(check) }).catch(() => { if (!cancelled) setOffMonthTargetCheck(null) })
+    return () => { cancelled = true }
+  }, [pendingAddDate])
 
   /** Updates the card on screen immediately instead of waiting on a write + a full dashboard reload — the previous round-trip-then-refetch approach is what made every Sold/Removed/Mark down tap feel laggy. Rolls back if the write actually fails. */
   async function updateStatus(id: string, status: ProductStatus, recheckAt?: Date) {
@@ -75,7 +85,10 @@ export function DashboardPage() {
 
   async function confirmPendingAddDate() {
     if (!pendingAddDate || !pendingExpiry) return
-    await addDate(pendingAddDate, new Date(`${pendingExpiry}T12:00:00`), Number(pendingQuantity) || 1)
+    // Same-month items attach to their own check as-is; an older-month item attaches to whichever current-month/department check the lookup above found instead.
+    const target = pendingAddDate.codeDateCheckMonth === currentMonth() ? pendingAddDate : offMonthTargetCheck ? { ...pendingAddDate, codeDateCheckId: offMonthTargetCheck.id, codeDateCheckName: offMonthTargetCheck.name, codeDateCheckMonth: offMonthTargetCheck.month } : null
+    if (!target) return
+    await addDate(target, new Date(`${pendingExpiry}T12:00:00`), Number(pendingQuantity) || 1)
     setPendingAddDate(null)
   }
 
@@ -194,7 +207,7 @@ export function DashboardPage() {
         </>}
     </section>
 
-    {pendingAddDate && pendingAddDate.codeDateCheckMonth === currentMonth() && <div className="fixed inset-x-0 bottom-16 z-40 px-4">
+    {pendingAddDate && (pendingAddDate.codeDateCheckMonth === currentMonth() || offMonthTargetCheck) && <div className="fixed inset-x-0 bottom-16 z-40 px-4">
       <div className="mx-auto max-w-3xl rounded-2xl bg-white p-4 shadow-lg ring-1 ring-slate-200">
         <p className="text-sm font-bold text-slate-900">Got new stock of "{pendingAddDate.productName}"?</p>
         <p className="mt-0.5 text-xs text-slate-500">Add its date now, or skip.</p>
@@ -209,13 +222,16 @@ export function DashboardPage() {
       </div>
     </div>}
 
-    {pendingAddDate && pendingAddDate.codeDateCheckMonth !== currentMonth() && <div className="fixed inset-x-0 bottom-16 z-40 px-4">
+    {pendingAddDate && pendingAddDate.codeDateCheckMonth !== currentMonth() && offMonthTargetCheck === undefined && <div className="fixed inset-x-0 bottom-16 z-40 px-4">
+      <div className="mx-auto max-w-3xl rounded-2xl bg-white p-4 text-sm text-slate-500 shadow-lg ring-1 ring-slate-200">Checking this month's checks…</div>
+    </div>}
+
+    {pendingAddDate && pendingAddDate.codeDateCheckMonth !== currentMonth() && offMonthTargetCheck === null && <div className="fixed inset-x-0 bottom-16 z-40 px-4">
       <div className="mx-auto max-w-3xl rounded-2xl bg-white p-4 shadow-lg ring-1 ring-slate-200">
         <p className="text-sm font-bold text-slate-900">Got new stock of "{pendingAddDate.productName}"?</p>
-        <p className="mt-1 text-xs text-slate-600">This item's check was for {formatMonth(pendingAddDate.codeDateCheckMonth)} — adding a date now belongs on a new month's check instead, so this one's records stay clean.</p>
         <div className="mt-3 flex gap-2">
           <Button variant="secondary" className="min-h-9 flex-1 px-2 text-xs" onClick={() => setPendingAddDate(null)}>Dismiss</Button>
-          <Link to="/checks/new" className="flex-1" onClick={() => setPendingAddDate(null)}><Button className="min-h-9 w-full px-2 text-xs">Start new Code Date Check</Button></Link>
+          <Link to="/checks/new" className="flex-1" onClick={() => setPendingAddDate(null)}><Button className="min-h-9 w-full px-2 text-xs">Add another date</Button></Link>
         </div>
       </div>
     </div>}
@@ -269,10 +285,22 @@ function Card({ item, onStatus, onAddDate, showLegend = false }: { item: Dashboa
   const [addingDate, setAddingDate] = useState(false)
   const [recheckDate, setRecheckDate] = useState(new Date(Date.now() + 86400000).toISOString().slice(0, 10))
   const [newExpiry, setNewExpiry] = useState(''); const [newQuantity, setNewQuantity] = useState('1')
+  const [offMonthTargetCheck, setOffMonthTargetCheck] = useState<CodeDateCheck | null | undefined>(undefined)
   const meta = `${item.department} · ${shortDate(item.expirationDate)}${item.status === 'marked_down' && item.recheckAt ? ` · Recheck ${shortDate(item.recheckAt)}${urgentRecheck ? ' (due now)' : ''}` : ''}`
-  // A quick re-add only reuses this item's own Code Date Check while that check's month is still the current one — once the calendar rolls over, stapling a new-month item onto last month's check would make that check's records/export messy, so it should get a fresh check instead.
+  // A quick re-add only reuses this item's own Code Date Check while that check's month is still the current one — once the calendar rolls over, stapling a new-month item onto last month's check would make that check's records/export messy. Even then, an already-active check for this month/department is reused (see the lookup below) rather than always sending staff to start a brand new one.
   const sameMonthAsCheck = item.codeDateCheckMonth === currentMonth()
-  function submitNewDate() { if (!newExpiry || !onAddDate) return; onAddDate(item, new Date(`${newExpiry}T12:00:00`), Number(newQuantity) || 1); setAddingDate(false); setNewExpiry(''); setNewQuantity('1') }
+  useEffect(() => {
+    if (!addingDate || sameMonthAsCheck) { setOffMonthTargetCheck(undefined); return }
+    let cancelled = false
+    findActiveCheckForMonth(currentMonth(), item.department).then(check => { if (!cancelled) setOffMonthTargetCheck(check) }).catch(() => { if (!cancelled) setOffMonthTargetCheck(null) })
+    return () => { cancelled = true }
+  }, [addingDate, sameMonthAsCheck, item.department])
+  function submitNewDate() {
+    if (!newExpiry || !onAddDate) return
+    const target = sameMonthAsCheck ? item : offMonthTargetCheck ? { ...item, codeDateCheckId: offMonthTargetCheck.id, codeDateCheckName: offMonthTargetCheck.name, codeDateCheckMonth: offMonthTargetCheck.month } : null
+    if (!target) return
+    onAddDate(target, new Date(`${newExpiry}T12:00:00`), Number(newQuantity) || 1); setAddingDate(false); setNewExpiry(''); setNewQuantity('1')
+  }
 
   return <article className={`overflow-hidden rounded-xl bg-white shadow-card ${isDone ? 'opacity-70' : ''}`}>
     {showLegend && !markingDown && <div className="flex justify-end gap-1.5 border-b border-slate-100 bg-slate-50 pb-1 pr-2.5 pt-1.5 text-[8px] font-bold uppercase tracking-wide text-slate-400">
@@ -316,7 +344,7 @@ function Card({ item, onStatus, onAddDate, showLegend = false }: { item: Dashboa
       <label className="text-xs font-semibold text-amber-800">Recheck date<input type="date" className="mt-1 w-full rounded-lg border p-2 text-sm" value={recheckDate} onChange={e => setRecheckDate(e.target.value)} /></label>
       <div className="mt-2 flex gap-2"><Button variant="secondary" className="min-h-8 flex-1 px-2 text-xs" onClick={() => setMarkingDown(false)}>Cancel</Button><Button className="min-h-8 flex-1 px-2 text-xs" onClick={() => onStatus(item.id, 'marked_down', new Date(`${recheckDate}T12:00:00`))}>Confirm</Button></div>
     </div>}
-    {isDone && addingDate && sameMonthAsCheck && <div className="border-t border-slate-100 bg-brand-50 p-3">
+    {isDone && addingDate && (sameMonthAsCheck || offMonthTargetCheck) && <div className="border-t border-slate-100 bg-brand-50 p-3">
       <p className="mb-2 text-xs font-semibold text-brand-800">Got new stock of this on the shelf? Add its date now, or skip.</p>
       <div className="grid grid-cols-2 gap-2">
         <label className="text-xs font-semibold text-brand-800">Expiration date<input type="date" className="mt-1 w-full rounded-lg border p-2 text-sm" value={newExpiry} onChange={e => setNewExpiry(e.target.value)} autoFocus /></label>
@@ -324,11 +352,11 @@ function Card({ item, onStatus, onAddDate, showLegend = false }: { item: Dashboa
       </div>
       <div className="mt-2 flex gap-2"><Button variant="secondary" className="min-h-8 flex-1 px-2 text-xs" onClick={() => setAddingDate(false)}>Skip</Button><Button className="min-h-8 flex-1 px-2 text-xs" disabled={!newExpiry} onClick={submitNewDate}>Save</Button></div>
     </div>}
-    {isDone && addingDate && !sameMonthAsCheck && <div className="border-t border-slate-100 bg-slate-50 p-3">
-      <p className="text-xs font-semibold text-slate-700">This item's check was for {formatMonth(item.codeDateCheckMonth)} — adding a date now belongs on a new month's check instead, so this one's records stay clean.</p>
-      <div className="mt-2 flex gap-2">
+    {isDone && addingDate && !sameMonthAsCheck && offMonthTargetCheck === undefined && <div className="border-t border-slate-100 bg-slate-50 p-3 text-xs text-slate-500">Checking this month's checks…</div>}
+    {isDone && addingDate && !sameMonthAsCheck && offMonthTargetCheck === null && <div className="border-t border-slate-100 bg-slate-50 p-3">
+      <div className="flex gap-2">
         <Button variant="secondary" className="min-h-8 flex-1 px-2 text-xs" onClick={() => setAddingDate(false)}>Cancel</Button>
-        <Link to="/checks/new" className="flex-1"><Button className="min-h-8 w-full px-2 text-xs">Start new Code Date Check</Button></Link>
+        <Link to="/checks/new" className="flex-1"><Button className="min-h-8 w-full px-2 text-xs">Add another date</Button></Link>
       </div>
     </div>}
   </article>

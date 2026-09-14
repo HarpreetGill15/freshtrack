@@ -23,6 +23,15 @@
         { "fieldPath": "codeDateCheckId", "order": "ASCENDING" },
         { "fieldPath": "expirationDate", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "codeDateChecks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "month", "order": "ASCENDING" },
+        { "fieldPath": "department", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

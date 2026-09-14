@@ -43,6 +43,17 @@ export async function listCodeDateChecks(count = 50) {
   return snapshot.docs.map(item => ({ id: item.id, ...item.data() } as CodeDateCheck))
 }
 
+/**
+ * Looks for an already-active check for this month and department, so a quick re-date on an item
+ * from an older check can attach to it directly instead of always sending staff through "start a
+ * new check" — that flow is only actually needed the first time a given month/department combo
+ * doesn't have a check yet.
+ */
+export async function findActiveCheckForMonth(month: string, department: string) {
+  const snapshot = await getDocs(query(collection(requiredDb(), 'codeDateChecks'), where('status', '==', 'active'), where('month', '==', month), where('department', '==', department), limit(1)))
+  return snapshot.empty ? null : ({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as CodeDateCheck)
+}
+
 /** Deletes a check and every code date recorded under it (e.g. removing test checks) — irreversible. */
 export async function deleteCodeDateCheck(id: string) {
   const database = requiredDb()
