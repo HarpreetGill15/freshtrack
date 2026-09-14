@@ -7,7 +7,6 @@ import { addOrIncrementCodeDate, getDashboardEntries, getDiversionStats, setCode
 import type { DashboardEntry, ProductStatus } from '../types/domain'
 
 const currentMonth = () => new Date().toISOString().slice(0, 7)
-const formatMonth = (month: string) => month ? new Date(`${month}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'an earlier month'
 
 type Tab = 'all' | 'today' | 'next5' | 'marked_down' | 'cleared' | 'removed'
 const TABS: { id: Tab; label: string }[] = [{ id: 'all', label: 'All active' }, { id: 'today', label: 'Today' }, { id: 'next5', label: 'Next 5 Days' }, { id: 'marked_down', label: 'Marked Down' }, { id: 'cleared', label: 'Cleared' }, { id: 'removed', label: 'Removed' }]
@@ -212,10 +211,9 @@ export function DashboardPage() {
     {pendingAddDate && pendingAddDate.codeDateCheckMonth !== currentMonth() && <div className="fixed inset-x-0 bottom-16 z-40 px-4">
       <div className="mx-auto max-w-3xl rounded-2xl bg-white p-4 shadow-lg ring-1 ring-slate-200">
         <p className="text-sm font-bold text-slate-900">Got new stock of "{pendingAddDate.productName}"?</p>
-        <p className="mt-1 text-xs text-slate-600">This item's check was for {formatMonth(pendingAddDate.codeDateCheckMonth)} — adding a date now belongs on a new month's check instead, so this one's records stay clean.</p>
         <div className="mt-3 flex gap-2">
           <Button variant="secondary" className="min-h-9 flex-1 px-2 text-xs" onClick={() => setPendingAddDate(null)}>Dismiss</Button>
-          <Link to="/checks/new" className="flex-1" onClick={() => setPendingAddDate(null)}><Button className="min-h-9 w-full px-2 text-xs">Start new Code Date Check</Button></Link>
+          <Link to="/checks/new" className="flex-1" onClick={() => setPendingAddDate(null)}><Button className="min-h-9 w-full px-2 text-xs">Add another date</Button></Link>
         </div>
       </div>
     </div>}
@@ -325,10 +323,9 @@ function Card({ item, onStatus, onAddDate, showLegend = false }: { item: Dashboa
       <div className="mt-2 flex gap-2"><Button variant="secondary" className="min-h-8 flex-1 px-2 text-xs" onClick={() => setAddingDate(false)}>Skip</Button><Button className="min-h-8 flex-1 px-2 text-xs" disabled={!newExpiry} onClick={submitNewDate}>Save</Button></div>
     </div>}
     {isDone && addingDate && !sameMonthAsCheck && <div className="border-t border-slate-100 bg-slate-50 p-3">
-      <p className="text-xs font-semibold text-slate-700">This item's check was for {formatMonth(item.codeDateCheckMonth)} — adding a date now belongs on a new month's check instead, so this one's records stay clean.</p>
-      <div className="mt-2 flex gap-2">
+      <div className="flex gap-2">
         <Button variant="secondary" className="min-h-8 flex-1 px-2 text-xs" onClick={() => setAddingDate(false)}>Cancel</Button>
-        <Link to="/checks/new" className="flex-1"><Button className="min-h-8 w-full px-2 text-xs">Start new Code Date Check</Button></Link>
+        <Link to="/checks/new" className="flex-1"><Button className="min-h-8 w-full px-2 text-xs">Add another date</Button></Link>
       </div>
     </div>}
   </article>
