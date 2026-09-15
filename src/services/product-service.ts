@@ -61,7 +61,7 @@ export async function saveScannedProduct(product: { upc: string; name: string; d
 }
 
 export async function getProduct(productId: string) { const snapshot = await getDoc(doc(database(), 'products', productId)); return snapshot.exists() ? normalize(snapshot.id, snapshot.data()) : null }
-export async function getCodeDates(productId: string) { const snapshot = await getDocs(query(collection(database(), 'codeDates'), where('productId', '==', productId), orderBy('expirationDate'))); return snapshot.docs.map(item => ({ id: item.id, ...item.data(), expirationDate: asDate(item.data().expirationDate) } as CodeDate)) }
+export async function getCodeDates(productId: string) { const snapshot = await getDocs(query(collection(database(), 'codeDates'), where('productId', '==', productId), orderBy('expirationDate'))); return snapshot.docs.map(item => ({ id: item.id, ...item.data(), expirationDate: asDate(item.data().expirationDate), recheckAt: item.data().recheckAt ? asDate(item.data().recheckAt) : undefined } as CodeDate)) }
 
 /**
  * Adds a code date, or — if an active code date already exists for the same product, the same
