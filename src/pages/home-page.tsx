@@ -24,7 +24,7 @@ export function HomePage() {
 
   useEffect(() => {
     void Promise.all([
-      getActiveCodeDateCheck().then(setActiveCheck).catch(() => setActiveCheck(null)),
+      getActiveCodeDateCheck({ verify: true }).then(setActiveCheck).catch(() => setActiveCheck(null)),
       getDashboardEntries().then(setEntries).catch(() => setEntries([])),
     ]).finally(() => setLoading(false))
   }, [])

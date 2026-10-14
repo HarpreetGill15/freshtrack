@@ -1,13 +1,17 @@
 import { AlertCircle, CheckCircle2, Minus, Plus, Search, ScanLine, WifiOff } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { ActiveCheckBanner } from '../components/active-check-banner'
 import { AppShell } from '../components/app-shell'
-import { BarcodeScanner } from '../components/barcode-scanner'
 import { Button } from '../components/ui/button'
-import { addOrIncrementCodeDate, findProductByUpc, saveScannedProduct } from '../services/product-service'
-import { activeCodeDateCheckId } from '../services/code-date-check-service'
+import { addOrIncrementCodeDate, codeDateDetails, findProductByUpc, saveScannedProduct } from '../services/product-service'
+import { activeCodeDateCheckId, getActiveCodeDateCheck } from '../services/code-date-check-service'
 import type { Product } from '../types/domain'
+
+// The barcode reader library is fetched in the background as soon as this page opens (see the
+// effect below), so it's ready by the time someone taps Scan — but it isn't part of the first download.
+const loadScanner = () => import('../components/barcode-scanner')
+const BarcodeScanner = lazy(async () => ({ default: (await loadScanner()).BarcodeScanner }))
 
 export function ScanPage() {
   const [scanning, setScanning] = useState(false); const [wasCameraScan, setWasCameraScan] = useState(false)
@@ -16,6 +20,7 @@ export function ScanPage() {
   const [expiry, setExpiry] = useState(''); const [quantity, setQuantity] = useState(1); const [saving, setSaving] = useState(false); const [savedMessage, setSavedMessage] = useState(''); const [saveError, setSaveError] = useState('')
   const upcInputRef = useRef<HTMLInputElement>(null); const dateInputRef = useRef<HTMLInputElement>(null)
 
+  useEffect(() => { void loadScanner().catch(() => undefined) }, [])
   useEffect(() => { if (product) dateInputRef.current?.focus() }, [product])
 
   const lookup = useCallback(async (rawUpc: string, fromCamera: boolean) => {
@@ -37,7 +42,9 @@ export function ScanPage() {
     setSaving(true); setSaveError('')
     const offline = !navigator.onLine
     try {
-      const result = await addOrIncrementCodeDate({ productId: product.id, codeDateCheckId, expirationDate: new Date(`${expiry}T12:00:00`), quantity })
+      // Cached on the phone, so this doesn't add a network round trip to every save.
+      const check = await getActiveCodeDateCheck().catch(() => null)
+      const result = await addOrIncrementCodeDate({ productId: product.id, codeDateCheckId, expirationDate: new Date(`${expiry}T12:00:00`), quantity }, check?.id === codeDateCheckId ? codeDateDetails(product, check) : undefined)
       setSavedMessage(offline ? 'Saved locally — waiting for connection.' : result.merged ? `Added to existing date — now qty ${result.quantity}.` : 'Saved.')
       setQuantity(1); setExpiry('')
       if (andNext) {
@@ -94,6 +101,6 @@ export function ScanPage() {
     </form>
     {message && <p className={`mt-5 flex gap-2 rounded-xl p-3 text-sm ${notFound ? 'bg-amber-50 text-amber-800' : 'bg-brand-50 text-brand-700'}`}><AlertCircle size={17} className="shrink-0"/>{message}</p>}
     {notFound && <form onSubmit={createManually} className="mt-5 rounded-2xl bg-white p-5 shadow-card"><h3 className="font-bold">Create product manually</h3><label className="mt-4 block text-sm font-medium">Product description<input className="mt-1 w-full rounded-xl border p-3 text-base" value={manualDescription} onChange={event => setManualDescription(event.target.value)} placeholder="Enter product description" required /></label><Button className="mt-4 w-full" disabled={loading}>{loading ? 'Saving…' : 'Save and add date'}</Button></form>}
-    {scanning && <BarcodeScanner onDetected={code => void lookup(code, true)} onClose={() => setScanning(false)} />}
+    {scanning && <Suspense fallback={<div className="fixed inset-0 z-50 grid place-items-center bg-slate-950 text-sm text-white">Starting camera…</div>}><BarcodeScanner onDetected={code => void lookup(code, true)} onClose={() => setScanning(false)} /></Suspense>}
   </AppShell>
 }

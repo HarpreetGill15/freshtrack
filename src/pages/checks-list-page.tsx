@@ -18,11 +18,11 @@ export function ChecksListPage() {
   const load = useCallback(async () => { setLoading(true); try { setChecks(await listCodeDateChecks()); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'Could not load checks.') } finally { setLoading(false) } }, [])
   useEffect(() => { void load() }, [load])
 
-  function resume(check: CodeDateCheck) { setActiveCodeDateCheckId(check.id); navigate('/scan') }
+  function resume(check: CodeDateCheck) { setActiveCodeDateCheckId(check.id, check); navigate('/scan') }
 
   async function download(check: CodeDateCheck) {
     setBusyId(check.id); setError('')
-    try { const entries = await getCodeDatesForCheck(check.id); downloadCheckExport(check, entries) }
+    try { const entries = await getCodeDatesForCheck(check.id); await downloadCheckExport(check, entries) }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not export this check.') }
     finally { setBusyId(null) }
   }

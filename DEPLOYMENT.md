@@ -40,6 +40,25 @@ keeping this config secret. This is standard Firebase web practice.
 3. Add the frontend env vars from step 2, plus the server-only ones from step 4 and 5 below.
 4. Deploy. `/api/reminders` is auto-detected as a serverless function from the `api/` directory.
 
+### Back-office sign-in (Dashboard / Checks / Import / Settings)
+
+The sign-in username and password are **not** in the code. They live only in Vercel env vars and
+are checked by `/api/login`, which hands back a Firebase sign-in carrying an `admin` flag.
+`firestore.rules` requires that flag to delete a check or its code dates.
+
+1. Firebase Console > Authentication > **Get started** (no sign-in provider needs to be turned on —
+   custom tokens work as soon as Authentication is enabled).
+2. Vercel env vars (Production and Preview):
+   - `ADMIN_USERNAME` and `ADMIN_PASSWORD` — the back-office login.
+   - `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` — the same service-account
+     values described in step 4 below (the login needs them to issue the sign-in).
+3. Deploy the code **before** the new rules: `firebase deploy --only firestore:rules` (or paste
+   `firestore.rules` into Console > Firestore > Rules > Publish). Until the rules are published,
+   deletes still work without sign-in.
+4. After the first deploy, sign in and open **Settings > Speed up old records** once. Records saved
+   from now on already include the product/check details the dashboard needs; this fills them in
+   on older records so the dashboard stops looking each one up.
+
 ## 4. Daily email (Vercel Cron + Resend) — recommended
 
 This is the simplest path to a single daily reminder email: no Zapier account, no Firebase Blaze

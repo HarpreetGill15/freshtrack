@@ -86,14 +86,12 @@ this was previously missing entirely and would have failed silently). Added the 
 **Needs your deploy**: `firebase deploy --only firestore:rules,firestore:indexes`, then wait for
 the new index to show Enabled before testing Finish Check / Excel export.
 
-## 14. Authentication -- Preserved, hardened
-Real Firebase email/password sign-in is untouched and still gates Dashboard/Product
-Import/Settings only -- never the check-creation/scan/finish workflow.
-**Change from earlier in this project**: the hardcoded local-admin test backdoor
-(username/password `928`/`928`) has been removed. It was fine for early interactive testing, but a
-credential-in-source-code is a real issue for the production-readiness pass this spec explicitly
-asks for (sections 18-19). If you still want an interim no-Firebase preview mode, tell me and I'll
-build a safer version (e.g. a real env-var-gated password, not one shipped in the JS bundle).
+## 14. Authentication -- Updated
+Back-office sign-in (Dashboard, Checks, Import, Settings) is checked server-side by `/api/login`
+against `ADMIN_USERNAME` / `ADMIN_PASSWORD` Vercel env vars -- the credentials are no longer in the
+source code. A correct login gets a Firebase session with an `admin` flag, and `firestore.rules`
+requires that flag to delete a check or its code dates. The check-creation/scan/finish workflow
+still needs no login. Setup steps are in `DEPLOYMENT.md` (section 3).
 
 ## 15. UI cleanup -- Partial, deliberately deprioritized
 Per your own stated priority order (#12 of 14), I did not do a full visual polish pass this round --

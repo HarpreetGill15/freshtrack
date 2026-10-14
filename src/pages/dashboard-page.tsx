@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { Link, useSearchParams } from 'react-router-dom'
 import { AppShell } from '../components/app-shell'
 import { Button } from '../components/ui/button'
-import { addOrIncrementCodeDate, getDashboardEntries, getDiversionStats, setCodeDateStatus } from '../services/product-service'
+import { addOrIncrementCodeDate, codeDateDetailsFromEntry, getDashboardEntries, getDiversionStats, setCodeDateStatus } from '../services/product-service'
 import { findActiveCheckForMonth } from '../services/code-date-check-service'
 import type { CodeDateCheck, DashboardEntry, ProductStatus } from '../types/domain'
 
@@ -95,7 +95,7 @@ export function DashboardPage() {
   /** Quick re-add for an item that was already sold/removed (e.g. new stock came in with a fresh expiration) — appends the new date to the same Code Date Check the item came from, no need to start a new scan session. */
   async function addDate(item: DashboardEntry, expirationDate: Date, quantity: number) {
     try {
-      const result = await addOrIncrementCodeDate({ productId: item.productId, codeDateCheckId: item.codeDateCheckId, expirationDate, quantity })
+      const result = await addOrIncrementCodeDate({ productId: item.productId, codeDateCheckId: item.codeDateCheckId, expirationDate, quantity }, codeDateDetailsFromEntry(item))
       if (result.merged) setOperational(items => items.map(i => i.id === result.id ? { ...i, quantity: result.quantity } : i))
       else setOperational(items => [...items, { ...item, id: result.id, status: 'active', quantity, expirationDate, recheckAt: undefined, createdAt: new Date() }])
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not add a new date.') }
