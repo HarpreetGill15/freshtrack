@@ -177,7 +177,7 @@ async function joinCodeDates(codeDates: CodeDate[]): Promise<DashboardEntry[]> {
   ])
 
   return codeDates.map(codeDate => {
-    const details = hasDetails(codeDate) ? codeDate : lookedUpDetails(codeDate, products.get(codeDate.productId), checks.get(codeDate.codeDateCheckId))
+    const details = hasDetails(codeDate) ? codeDate : lookedUpDetails(products.get(codeDate.productId), checks.get(codeDate.codeDateCheckId))
     return {
       id: codeDate.id,
       productId: codeDate.productId,
@@ -200,7 +200,7 @@ async function joinCodeDates(codeDates: CodeDate[]): Promise<DashboardEntry[]> {
   })
 }
 
-function lookedUpDetails(codeDate: CodeDate, product?: Record<string, unknown>, check?: Record<string, unknown>): CodeDateDetails {
+function lookedUpDetails(product?: Record<string, unknown>, check?: Record<string, unknown>): CodeDateDetails {
   return {
     productName: String(product?.name ?? product?.description ?? 'Unnamed product'),
     description: String(product?.description ?? ''),
@@ -227,6 +227,25 @@ export async function getDiversionStats() {
     getAggregateFromServer(query(codeDates, where('status', '==', 'removed')), totals),
   ])
   return { soldUnits: sold.data().units, soldRecords: sold.data().records, removedUnits: removed.data().units, removedRecords: removed.data().records }
+}
+
+/** How many code-date records a check has (Firestore counts them — nothing is downloaded). Used for "38 scanned". */
+export async function countCodeDatesForCheck(codeDateCheckId: string) {
+  const result = await getAggregateFromServer(query(collection(database(), 'codeDates'), where('codeDateCheckId', '==', codeDateCheckId)), { records: count() })
+  return result.data().records
+}
+
+/**
+ * Records sold or removed since `since`, for the dashboard charts. Filters on `updatedAt` alone (an
+ * automatic single-field index, so no new index to deploy) and keeps cleared/removed in the browser.
+ * `updatedAt` is stamped when an item is marked Sold/Removed, which is the moment the charts count.
+ */
+export async function getResolvedSince(since: Date): Promise<DashboardEntry[]> {
+  const snapshot = await getDocs(query(collection(database(), 'codeDates'), where('updatedAt', '>=', since)))
+  const resolved = snapshot.docs.map(toCodeDate).filter(item => item.status === 'cleared' || item.status === 'removed')
+  const entries = await joinCodeDates(resolved)
+  const resolvedAt = new Map(snapshot.docs.map(item => [item.id, item.data().updatedAt ? asDate(item.data().updatedAt) : undefined]))
+  return entries.map(entry => ({ ...entry, resolvedAt: resolvedAt.get(entry.id) }))
 }
 
 /** Dashboard data source. Defaults to the operational view (active + marked_down); pass an explicit status list for the Cleared/Removed filter tabs. */
@@ -259,7 +278,7 @@ export async function backfillCodeDateDetails(onProgress?: (done: number, total:
   for (let i = 0; i < missing.length; i += 200) {
     const chunk = missing.slice(i, i + 200)
     const batch = writeBatch(firestore)
-    for (const item of chunk) batch.update(doc(firestore, 'codeDates', item.id), { ...lookedUpDetails(item, products.get(item.productId), checks.get(item.codeDateCheckId)) })
+    for (const item of chunk) batch.update(doc(firestore, 'codeDates', item.id), { ...lookedUpDetails(products.get(item.productId), checks.get(item.codeDateCheckId)) })
     try { await batch.commit(); updated += chunk.length } catch { failed += chunk.length }
     onProgress?.(updated + failed, missing.length)
   }

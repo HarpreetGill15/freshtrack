@@ -6,10 +6,10 @@ import { useAuth } from '../hooks/use-auth'
 export function LoginPage() {
   const { localAdmin, signIn } = useAuth(); const navigate = useNavigate(); const location = useLocation()
   const [username, setUsername] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
-  if (localAdmin) return <Navigate to="/dashboard" replace />
+  if (localAdmin) return <Navigate to="/more" replace />
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError('')
-    try { await signIn(username, password); const destination = (location.state as { from?: string } | null)?.from ?? '/dashboard'; navigate(destination, { replace: true }) }
+    try { await signIn(username, password); const destination = (location.state as { from?: string } | null)?.from ?? '/more'; navigate(destination, { replace: true }) }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Incorrect username or password.') }
     finally { setBusy(false) }
   }

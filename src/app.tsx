@@ -15,6 +15,8 @@ const ScanPage = lazy(async () => ({ default: (await import('./pages/scan-page')
 const ProductDetailsPage = lazy(async () => ({ default: (await import('./pages/product-details-page')).ProductDetailsPage }))
 const HelpPage = lazy(async () => ({ default: (await import('./pages/help-page')).HelpPage }))
 const DashboardPage = lazy(async () => ({ default: (await import('./pages/dashboard-page')).DashboardPage }))
+const TodoPage = lazy(async () => ({ default: (await import('./pages/todo-page')).TodoPage }))
+const MorePage = lazy(async () => ({ default: (await import('./pages/more-page')).MorePage }))
 const ChecksListPage = lazy(async () => ({ default: (await import('./pages/checks-list-page')).ChecksListPage }))
 const ProductImportPage = lazy(async () => ({ default: (await import('./pages/product-import-page')).ProductImportPage }))
 const SettingsPage = lazy(async () => ({ default: (await import('./pages/settings-page')).SettingsPage }))
@@ -23,7 +25,7 @@ export default function App() {
   return (
     <Suspense fallback={<p className="p-8 text-center text-sm text-slate-500">Loading…</p>}>
       <Routes>
-        {/* Public entry point and the full Code Date Check workflow require no authentication. */}
+        {/* The full Code Date Check workflow requires no sign-in. */}
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/checks/new" element={<NewCodeDateCheckPage />} />
@@ -31,10 +33,13 @@ export default function App() {
         <Route path="/scan" element={<ScanPage />} />
         <Route path="/products/:productId" element={<ProductDetailsPage />} />
         <Route path="/help" element={<HelpPage />} />
+        {/* Clerks and managers see the same screens — no sign-in to view these. */}
+        <Route path="/todo" element={<TodoPage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/checks" element={<ChecksListPage />} />
+        <Route path="/more" element={<MorePage />} />
 
-        {/* Back-office views remain gated behind sign-in. */}
-        <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-        <Route path="/checks" element={<ProtectedRoute><ChecksListPage /></ProtectedRoute>} />
+        {/* Only these need the manager sign-in (deleting a check asks for it too — see checks-list-page). */}
         <Route path="/product-import" element={<ProtectedRoute><ProductImportPage /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
 

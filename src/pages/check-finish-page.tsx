@@ -48,14 +48,14 @@ export function CheckFinishPage() {
       <Stat label="Products scanned" value={productCount} />
       <Stat label="Code-date records" value={entries.length} />
     </section>
-    <p className="mt-2 text-xs text-slate-400">Reviewing and updating item status (marked down, cleared, removed) happens on the Dashboard after the check — this screen is just for wrapping up scanning.</p>
+    <p className="mt-2 text-xs text-slate-400">Reviewing and updating item status (marked down, cleared, removed) happens on the To-do list after the check — this screen is just for wrapping up scanning.</p>
 
     {error && <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
     <section className="mt-6 rounded-2xl bg-white p-5 shadow-card">
       <div className="flex items-center gap-3"><FileSpreadsheet className="text-brand-600" size={22}/><div><p className="font-semibold">Export Excel</p><p className="text-xs text-slate-500">All records for this check, sorted by nearest expiry.</p></div></div>
       <Button variant="secondary" className="mt-4 w-full" disabled={!entries.length} onClick={() => void downloadCheckExport(check, entries).catch(() => setError('Could not create the Excel file.'))}><Download size={17} className="mr-2"/>Download .xlsx</Button>
-      <p className="mt-2 text-center text-xs text-slate-400">On a computer? Go to Dashboard → Checks to export from there instead.</p>
+      <p className="mt-2 text-center text-xs text-slate-400">On a computer? Go to More → Checks to export from there instead.</p>
     </section>
 
     <div className="mt-6 flex gap-3">

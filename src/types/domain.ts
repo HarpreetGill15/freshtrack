@@ -87,6 +87,8 @@ export interface DashboardEntry {
   /** The check's audit month, `YYYY-MM` (matches the `<input type="month">` value it was created with) — used to keep a quick re-added date from being filed under a check for a month that's already over. */
   codeDateCheckMonth: string
   createdAt?: Date
+  /** When the item was marked Sold or Removed (only set by getResolvedSince, for the dashboard charts). */
+  resolvedAt?: Date
 }
 
 export interface ImportedProduct { upc: string; description: string; vendorCode?: string; subDepartment?: string }
