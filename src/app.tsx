@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useSearchParams } from 'react-router-dom'
 import { HomePage } from './pages/home-page'
 
 // Sign-in code (Firebase Auth) is only needed for the back-office pages, so it isn't part of the first download either.
@@ -21,6 +21,14 @@ const ChecksListPage = lazy(async () => ({ default: (await import('./pages/check
 const ProductImportPage = lazy(async () => ({ default: (await import('./pages/product-import-page')).ProductImportPage }))
 const SettingsPage = lazy(async () => ({ default: (await import('./pages/settings-page')).SettingsPage }))
 
+/** Old links like /dashboard?tab=today belong to the To-do list now — send those there without asking anyone to sign in. */
+function DashboardRoute() {
+  const [searchParams] = useSearchParams()
+  const tab = searchParams.get('tab')
+  if (tab) return <Navigate to={`/todo?tab=${tab}`} replace />
+  return <ProtectedRoute manager><DashboardPage /></ProtectedRoute>
+}
+
 export default function App() {
   return (
     <Suspense fallback={<p className="p-8 text-center text-sm text-slate-500">Loading…</p>}>
@@ -33,13 +41,15 @@ export default function App() {
         <Route path="/scan" element={<ScanPage />} />
         <Route path="/products/:productId" element={<ProductDetailsPage />} />
         <Route path="/help" element={<HelpPage />} />
-        {/* Clerks and managers see the same screens — no sign-in to view these. */}
+        {/* No sign-in needed to view these. */}
         <Route path="/todo" element={<TodoPage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/checks" element={<ChecksListPage />} />
         <Route path="/more" element={<MorePage />} />
 
-        {/* Only these need the manager sign-in (deleting a check asks for it too — see checks-list-page). */}
+        {/* The charts need the manager login (h). */}
+        <Route path="/dashboard" element={<DashboardRoute />} />
+
+        {/* These need either login (928 or h) — deleting a check asks for it too, see checks-list-page. */}
         <Route path="/product-import" element={<ProtectedRoute><ProductImportPage /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
 

@@ -5,7 +5,7 @@ import { AppShell } from '../components/app-shell'
 import { useAuth } from '../hooks/use-auth'
 
 export function MorePage() {
-  const { localAdmin, loading, signOut } = useAuth()
+  const { localAdmin, role, loading, signOut } = useAuth()
   const navigate = useNavigate()
   return <AppShell>
     <h1 className="text-2xl font-extrabold">More</h1>
@@ -16,9 +16,9 @@ export function MorePage() {
       <Row to="/help" icon={<CircleHelp size={20} />} label="Help" hint="How to run a check" />
     </nav>
     {!loading && (localAdmin
-      ? <button type="button" onClick={() => void signOut()} className="mt-4 flex min-h-14 w-full items-center gap-3 rounded-2xl bg-white px-4 text-left font-bold"><LogOut size={20} className="text-muted" />Manager sign out</button>
-      : <button type="button" onClick={() => navigate('/login', { state: { from: '/more' } })} className="mt-4 flex min-h-14 w-full items-center gap-3 rounded-2xl bg-white px-4 text-left font-bold"><LogIn size={20} className="text-muted" />Manager sign in</button>)}
-    <p className="mt-3 text-sm text-muted">Everyone can scan, see the to-do list, dashboard and checks. Signing in is only needed to import products, change settings, or delete a check.</p>
+      ? <button type="button" onClick={() => void signOut()} className="mt-4 flex min-h-14 w-full items-center gap-3 rounded-2xl bg-white px-4 text-left font-bold"><LogOut size={20} className="text-muted" />Sign out ({role === 'manager' ? 'manager' : 'staff'})</button>
+      : <button type="button" onClick={() => navigate('/login', { state: { from: '/more' } })} className="mt-4 flex min-h-14 w-full items-center gap-3 rounded-2xl bg-white px-4 text-left font-bold"><LogIn size={20} className="text-muted" />Sign in</button>)}
+    <p className="mt-3 text-sm text-muted">Anyone can scan, see the to-do list and checks. Signing in is needed to import products, change settings, or delete a check. The charts Dashboard needs the manager login.</p>
   </AppShell>
 }
 

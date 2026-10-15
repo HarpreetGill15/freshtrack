@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Link, Navigate, useSearchParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { AppShell } from '../components/app-shell'
 import { getDashboardEntries, getResolvedSince } from '../services/product-service'
 import { addDays, daysUntil, shortDate } from '../lib/dates'
@@ -13,7 +13,6 @@ const WEEKS = 8
 function startOfWeek(date: Date) { const d = new Date(date); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d } // Monday
 
 export function DashboardPage() {
-  const [searchParams] = useSearchParams()
   const [open, setOpen] = useState<DashboardEntry[]>([])
   const [resolved, setResolved] = useState<DashboardEntry[]>([])
   const [loading, setLoading] = useState(true); const [error, setError] = useState('')
@@ -61,9 +60,6 @@ export function DashboardPage() {
     for (const item of resolved) if (item.status === 'removed' && item.resolvedAt && item.resolvedAt >= since) totals.set(item.department, (totals.get(item.department) ?? 0) + item.quantity)
     return [...totals.entries()].sort((a, b) => b[1] - a[1])
   }, [resolved])
-
-  // Old links like /dashboard?tab=today now belong to the To-do list.
-  if (searchParams.get('tab')) return <Navigate to={`/todo?tab=${searchParams.get('tab')}`} replace />
 
   return <AppShell>
     <h1 className="text-2xl font-extrabold">Dashboard</h1>

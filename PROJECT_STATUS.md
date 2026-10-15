@@ -87,11 +87,10 @@ this was previously missing entirely and would have failed silently). Added the 
 the new index to show Enabled before testing Finish Check / Excel export.
 
 ## 14. Authentication -- Updated
-Manager sign-in (Import, Settings, deleting a check) uses Firebase Authentication email/password,
-free on the Spark plan. Username `h` maps to `h@freshtrack.local`; the password is set in Firebase
-Console, not in the code. `firestore.rules` only lets that email delete checks or code dates.
-Scanning, the To-do list, the Dashboard and the Checks list need no sign-in. Setup in
-`DEPLOYMENT.md` (section 3).
+Two Firebase email/password logins (free on the Spark plan), passwords set in Firebase Console:
+`928` (staff: delete checks, import, settings) and `h` (manager: the same plus the charts
+Dashboard). `firestore.rules` only lets those two emails delete. Scanning, the To-do list and the
+Checks list need no login. Setup in `DEPLOYMENT.md` (section 3).
 
 ## 15. UI cleanup -- Partial, deliberately deprioritized
 Per your own stated priority order (#12 of 14), I did not do a full visual polish pass this round --
