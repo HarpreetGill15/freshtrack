@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { browserSessionPersistence, getAuth, onAuthStateChanged, setPersistence, signInWithEmailAndPassword, signOut as firebaseSignOut, type Auth, type User } from 'firebase/auth'
-import { app } from '../lib/firebase'
+import { app, firebaseNotConfiguredMessage } from '../lib/firebase'
 
 // Two logins, both free Firebase email/password accounts created once in Firebase Console (see
 // DEPLOYMENT.md). The passwords live only in Firebase, never in this code.
@@ -40,7 +40,7 @@ export function useAuth() {
     isManager: role === 'manager',
     loading,
     signIn: async (username: string, password: string) => {
-      if (!auth) throw new Error('Firebase is not configured.')
+      if (!auth) throw new Error(firebaseNotConfiguredMessage)
       await persistenceReady
       try {
         const credential = await signInWithEmailAndPassword(auth, toEmail(username), toFirebasePassword(password))

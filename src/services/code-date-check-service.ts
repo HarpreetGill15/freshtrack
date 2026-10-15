@@ -1,5 +1,5 @@
 import { addDoc, collection, doc, getDoc, getDocs, limit, orderBy, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore'
-import { db } from '../lib/firebase'
+import { db, firebaseNotConfiguredMessage } from '../lib/firebase'
 import type { CodeDateCheck } from '../types/domain'
 
 // localStorage (not sessionStorage) so a check survives closing the tab/browser or the phone
@@ -10,7 +10,7 @@ const ACTIVE_CHECK_KEY = 'freshtrack-active-code-date-check'
 // instantly instead of a network round trip on every screen. Verified against Firestore only where
 // it matters (Home, Finish) — see getActiveCodeDateCheck's `verify` flag.
 const ACTIVE_CHECK_CACHE_KEY = 'freshtrack-active-code-date-check-details'
-const requiredDb = () => { if (!db) throw new Error('Firebase is not configured.'); return db }
+const requiredDb = () => { if (!db) throw new Error(firebaseNotConfiguredMessage); return db }
 
 function readStorage(key: string) { try { return window.localStorage.getItem(key) } catch { return null } }
 function writeStorage(key: string, value: string | null) { try { if (value == null) window.localStorage.removeItem(key); else window.localStorage.setItem(key, value) } catch { /* storage unavailable (private mode) — the app still works, it just won't remember the check */ } }

@@ -1,7 +1,7 @@
 import { collection, doc, documentId, getDocs, query, serverTimestamp, setDoc, where, writeBatch } from 'firebase/firestore'
-import { db } from '../lib/firebase'
+import { db, firebaseNotConfiguredMessage } from '../lib/firebase'
 import type { ImportTotals, ImportedProduct } from '../types/domain'
-const requiredDb = () => { if (!db) throw new Error('Firebase is not configured. Add your VITE_FIREBASE_* variables.'); return db }
+const requiredDb = () => { if (!db) throw new Error(firebaseNotConfiguredMessage); return db }
 
 // Rows are compared and written 300 at a time: existing products are read with batched
 // `documentId() in [...]` queries (30 IDs each, run in parallel) and changes go out as one batched

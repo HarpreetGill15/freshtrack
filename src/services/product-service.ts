@@ -1,9 +1,9 @@
 import { addDoc, collection, count, doc, documentId, getAggregateFromServer, getDoc, getDocs, increment, orderBy, query, serverTimestamp, setDoc, sum, updateDoc, where, writeBatch, type DocumentData, type FieldValue, type QueryDocumentSnapshot } from 'firebase/firestore'
-import { db } from '../lib/firebase'
+import { db, firebaseNotConfiguredMessage } from '../lib/firebase'
 import { normalizeScannedUpc, normalizeUpc } from '../lib/upc'
 import type { CodeDate, CodeDateCheck, CodeDateDetails, DashboardEntry, Product, ProductStatus } from '../types/domain'
 
-const database = () => { if (!db) throw new Error('Firebase is not configured.'); return db }
+const database = () => { if (!db) throw new Error(firebaseNotConfiguredMessage); return db }
 const asDate = (value: unknown) => value && typeof value === 'object' && 'toDate' in value ? (value as { toDate(): Date }).toDate() : new Date(value as string)
 const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString()
 /** Local calendar day as YYYY-MM-DD (not toISOString, which is UTC and flips to tomorrow in the evening). */
