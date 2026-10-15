@@ -5,6 +5,7 @@ import { AppShell } from '../components/app-shell'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../hooks/use-auth'
 import { backfillCodeDateDetails } from '../services/product-service'
+import { DailyEmailsCard } from '../components/daily-emails-card'
 
 export function SettingsPage() {
   const { signOut } = useAuth()
@@ -30,6 +31,7 @@ export function SettingsPage() {
     <section className="mt-7 space-y-3">
       <article className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-card"><span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><UserRound size={19}/></span><div><p className="font-semibold">Account</p><p className="text-sm text-slate-500">Store admin</p></div></article>
       <article className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-card"><span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><Store size={19}/></span><div><p className="font-semibold">Store</p><p className="text-sm text-slate-500">Default store</p></div></article>
+      <DailyEmailsCard />
       <article className="rounded-2xl bg-white p-4 shadow-card">
         <div className="flex items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600"><Gauge size={19}/></span><div><p className="font-semibold">Speed up old records</p><p className="text-sm text-slate-500">One-time upgrade so the dashboard loads faster. Safe to run again.</p></div></div>
         <Button variant="secondary" className="mt-3 w-full" disabled={upgrading} onClick={() => void upgradeOldRecords()}>{upgrading ? 'Working…' : 'Run upgrade'}</Button>

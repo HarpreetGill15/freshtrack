@@ -64,50 +64,39 @@ Scanning, the To-do list and the Checks list need no login.
    Records saved from now on already include the product/check details the lists need; this fills
    them in on older records so lists stop looking each one up.
 
-## 4. Daily email (Vercel Cron + Resend) — recommended
+## 4. Daily emails (Vercel Cron + Resend, both free)
 
-This is the simplest path to a single daily reminder email: no Zapier account, no Firebase Blaze
-upgrade. `/api/send-reminder.ts` is a Vercel serverless function, triggered once a day by a Vercel
-**Cron Job** (configured in `vercel.json`), that reads Firestore directly and sends one HTML email
-via [Resend](https://resend.com), grouped the same way as the dashboard: **Marked Down — Recheck
-Required** first (flagging anything overdue for recheck), then **Needs Initial Action**. Cron Jobs
-work on Vercel's free Hobby plan (limited to once/day, which is exactly what this needs).
+Every morning at 7 AM (Toronto time) each department — Grocery, Dairy, Meat, Produce — gets its own
+email listing its markdowns to recheck, items to pull or mark down today, and items expiring in the
+next 5 days. An optional "All departments" list gets one combined email. A department with nothing
+due gets no email that day. Who gets what is set in the app: **More → Settings → Daily emails**.
 
 ### One-time setup
 
-1. **Generate a Firebase Admin service account** (skip if you've already done this for the Zapier
-   feed below): Firebase Console > Project settings > Service accounts > Generate new private key.
-   This downloads a JSON file — do not commit it.
-2. **Create a free Resend account** at resend.com and grab your API key from
-   Dashboard > API Keys. The free tier (100 emails/day) is more than enough for one daily digest.
-   For testing with no domain setup, Resend's shared sandbox sender `onboarding@resend.dev` works
-   out of the box — it only delivers to the email address you signed up to Resend with.
-3. **Set these Vercel env vars** (Project Settings > Environment Variables):
-   - `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` — from the service
-     account JSON (skip if already set for the Zapier feed — they're shared).
-   - `RESEND_API_KEY` — from Resend.
-   - `REMINDER_TO_EMAIL` — the address that should receive the digest.
-   - `CRON_SECRET` — any random string (e.g. `openssl rand -hex 32`). Vercel automatically sends
-     this back as `Authorization: Bearer <CRON_SECRET>` when it triggers the cron job, which is
-     what authenticates the scheduled request — you don't call it yourself in production.
-4. Redeploy so the new env vars and the `crons` entry in `vercel.json` take effect. The default
-   schedule is `0 11 * * *` (11:00 UTC, ~7am Eastern during DST) — edit that cron expression in
-   `vercel.json` for a different time; Vercel Cron is UTC-only.
+1. **Resend** (free): sign up at resend.com → API Keys → Create API Key.
+2. **Firebase service account** (free) — lets the 7 AM job read the database:
+   Firebase Console → gear icon → Project settings → **Service accounts** → **Generate new private key**.
+   A `.json` file downloads. Open it in a text editor and copy everything.
+3. **Vercel** → the `928` team's freshtrack project → Settings → Environment Variables. Add, for
+   **Production and Preview**:
+   - `RESEND_API_KEY` — the key from step 1.
+   - `FIREBASE_SERVICE_ACCOUNT` — paste the whole JSON file from step 2.
+   - `CRON_SECRET` — any long random text (e.g. mash the keyboard for 30+ characters). Vercel sends it
+     with the 7 AM call so nobody else can trigger the emails.
+4. Redeploy (or push any change) so the new settings take effect.
+5. In the app: sign in → More → Settings → Daily emails → type the emails for each department →
+   Save → **Preview today** to check, then **Send test now**.
 
-### Testing it right away (don't wait for the schedule)
+The schedule in `vercel.json` runs at 11:00 and 12:00 UTC; whichever is 7 AM in Toronto that day
+(summer or winter time) sends, the other does nothing, and a log in Firestore (`settings/reminderLog`)
+prevents a double send. Vercel's free plan may run a scheduled job any time within that hour.
 
-The endpoint also accepts the same shared secret as `/api/reminders` for manual testing:
-```
-curl -H "x-api-key: <your ZAPIER_API_KEY value>" https://<your-vercel-domain>/api/send-reminder
-```
-It returns `{"sent": true, "count": <n>, "recheckDueCount": <n>}` (or `{"sent": false, "count": 0}`
-if nothing currently needs attention) and the email lands within a few seconds.
+### Sending to other people (needs a domain)
 
-### Going live with your own domain later
-
-Once you're happy with the test emails, verify your own sending domain in Resend (Dashboard >
-Domains) and set `RESEND_FROM_EMAIL` (e.g. `FreshTrack <reminders@yourdomain.com>`) as a Vercel env
-var — this unlocks sending to any recipient, not just your own Resend account email.
+Until you verify a domain, Resend only delivers to **the email address you signed up to Resend
+with** — perfect for testing, but department leads won't receive anything. To send to anyone:
+Resend → Domains → Add domain (one you own, e.g. a ~$15/year `.ca`) → add the DNS records it shows →
+then set `RESEND_FROM_EMAIL` in Vercel, e.g. `FreshTrack <codedates@yourdomain.ca>`.
 
 ## 5. Zapier integration (`/api/reminders`)
 
@@ -161,7 +150,7 @@ Code Date Check's `id`), `area`, `section`. Omit all of them for the default rul
 `active` and expiring within 5 days, plus everything `marked_down` regardless of date, excluding
 `cleared`/`removed`.
 
-## 5b. Cloud Function + Resend (alternative, needs Firebase Blaze)
+## 5b. Cloud Function + Resend (not used — needs the paid Firebase Blaze plan; the Vercel emails above replace it)
 
 `functions/src/index.ts` implements the same daily-email idea as section 4, but as a Firebase
 Cloud Function instead of a Vercel Cron Job. Functionally equivalent — only worth using instead of

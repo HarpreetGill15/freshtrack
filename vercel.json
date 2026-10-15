@@ -5,6 +5,7 @@
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [
-    { "path": "/api/send-reminder", "schedule": "0 11 * * *" }
+    { "path": "/api/send-reminder?slot=summer", "schedule": "0 11 * * *" },
+    { "path": "/api/send-reminder?slot=winter", "schedule": "0 12 * * *" }
   ]
 }

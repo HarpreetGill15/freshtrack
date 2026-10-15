@@ -28,6 +28,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Daily email lists (settings/reminders) and the send log (settings/reminderLog) — store logins only.
+    // The daily email itself runs on the server with admin access, so it isn't limited by this.
+    match /settings/{id} {
+      allow read, write: if isAdmin();
+    }
+
     match /codeDateChecks/{id} {
       allow read: if true;
       allow create: if request.resource.data.department is string
