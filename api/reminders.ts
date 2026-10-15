@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { adminApp, fetchReminderRows, getFirestore } from './_lib/reminder-data'
+import { adminApp, fetchReminderRows, getFirestore } from './_lib/reminder-data.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Shared-secret auth: Zapier sends this as a header or query param. Rotate ZAPIER_API_KEY in

@@ -1,9 +1,10 @@
-import * as XLSX from 'xlsx'
 import type { CodeDateCheck, DashboardEntry } from '../types/domain'
 
 const COLUMNS = ['UPC', 'Description', 'Expiring Date'] as const
 
-export function buildCheckWorkbook(check: CodeDateCheck, entries: DashboardEntry[]) {
+// The Excel library is large, so it's fetched only when someone actually exports.
+async function buildCheckWorkbook(check: CodeDateCheck, entries: DashboardEntry[]) {
+  const XLSX = await import('xlsx')
   const sorted = [...entries].sort((a, b) => a.expirationDate.getTime() - b.expirationDate.getTime() || a.productName.localeCompare(b.productName))
   const rows = sorted.map(entry => [
     entry.upc,
@@ -28,6 +29,7 @@ export function checkExportFilename(check: CodeDateCheck) {
   return `${safeName}_Code_Date_Check_${check.checkDate}.xlsx`
 }
 
-export function downloadCheckExport(check: CodeDateCheck, entries: DashboardEntry[]) {
-  XLSX.writeFile(buildCheckWorkbook(check, entries), checkExportFilename(check))
+export async function downloadCheckExport(check: CodeDateCheck, entries: DashboardEntry[]) {
+  const XLSX = await import('xlsx')
+  XLSX.writeFile(await buildCheckWorkbook(check, entries), checkExportFilename(check))
 }

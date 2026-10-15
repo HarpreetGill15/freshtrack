@@ -1,94 +1,58 @@
-import { AlertTriangle, ArrowRight, CalendarClock, ClipboardList, ScanLine, TrendingDown } from 'lucide-react'
+import { ChevronRight, ScanLine } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { AppShell } from '../components/app-shell'
 import { Button } from '../components/ui/button'
 import { getActiveCodeDateCheck } from '../services/code-date-check-service'
-import { getDashboardEntries } from '../services/product-service'
+import { countCodeDatesForCheck, getDashboardEntries } from '../services/product-service'
+import { todoCounts } from '../lib/dates'
 import type { CodeDateCheck, DashboardEntry } from '../types/domain'
-
-const daysUntil = (date: Date) => Math.ceil((new Date(date).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000)
-const recheckDue = (item: DashboardEntry) => item.status === 'marked_down' && item.recheckAt != null && daysUntil(item.recheckAt) <= 0
-
-const STAT_TILES = [
-  { key: 'overdue', label: 'Overdue', icon: AlertTriangle, tone: 'bg-red-50 text-red-700', tab: 'today' },
-  { key: 'today', label: 'Due Today', icon: CalendarClock, tone: 'bg-orange-50 text-orange-700', tab: 'today' },
-  { key: 'week', label: 'Due This Week', icon: ClipboardList, tone: 'bg-yellow-50 text-yellow-800', tab: 'next5' },
-  { key: 'markedDown', label: 'Marked Down', icon: TrendingDown, tone: 'bg-amber-50 text-amber-800', tab: 'marked_down' },
-] as const
 
 export function HomePage() {
   const navigate = useNavigate()
   const [activeCheck, setActiveCheck] = useState<CodeDateCheck | null>(null)
+  const [scanned, setScanned] = useState<number | null>(null)
   const [entries, setEntries] = useState<DashboardEntry[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     void Promise.all([
-      getActiveCodeDateCheck().then(setActiveCheck).catch(() => setActiveCheck(null)),
+      getActiveCodeDateCheck({ verify: true }).then(check => {
+        setActiveCheck(check)
+        if (check) countCodeDatesForCheck(check.id).then(setScanned).catch(() => setScanned(null))
+      }).catch(() => setActiveCheck(null)),
       getDashboardEntries().then(setEntries).catch(() => setEntries([])),
     ]).finally(() => setLoading(false))
   }, [])
 
-  const counts = {
-    overdue: entries.filter(e => e.status === 'active' && daysUntil(e.expirationDate) < 0).length,
-    today: entries.filter(e => e.status === 'active' && daysUntil(e.expirationDate) === 0).length,
-    week: entries.filter(e => e.status === 'active' && daysUntil(e.expirationDate) > 0 && daysUntil(e.expirationDate) <= 6).length,
-    markedDown: entries.filter(e => e.status === 'marked_down').length,
-  }
-  const recheckDueCount = entries.filter(recheckDue).length
+  const counts = todoCounts(entries)
+  const show = (value: number) => loading ? '–' : String(value)
 
-  return (
-    <main className="min-h-screen bg-gradient-to-b from-brand-50 to-white p-5">
-      <div className="mx-auto w-full max-w-md py-8">
-        <div className="mb-6 flex items-center gap-3">
-          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand-600 text-2xl font-black text-white shadow-sm">F</div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">FreshTrack</h1>
-            <p className="text-sm text-slate-500">Grocery code-date management · no sign-in required to run a check</p>
-          </div>
-        </div>
+  return <AppShell>
+    {activeCheck && <section className="rounded-[20px] bg-brand-600 p-5 text-white">
+      <p className="text-[13px] font-bold uppercase tracking-wider text-brand-100">Check in progress</p>
+      <h1 className="mt-3 text-2xl font-extrabold leading-tight">{activeCheck.name}</h1>
+      <p className="mt-1 text-[15px] text-brand-100">{activeCheck.department} · {activeCheck.month}{scanned != null ? ` · ${scanned} item${scanned === 1 ? '' : 's'} scanned` : ''}</p>
+      <Link to="/scan" className="mt-4 flex min-h-14 items-center justify-center gap-2.5 rounded-2xl bg-white text-lg font-bold text-brand-600"><ScanLine size={22} aria-hidden="true" />Continue scanning</Link>
+    </section>}
 
-        {!loading && recheckDueCount > 0 && (
-          <Link to="/dashboard?tab=marked_down" className="mb-4 flex items-center justify-between gap-2 rounded-2xl border-2 border-amber-400 bg-amber-100 px-4 py-3 text-sm font-bold text-amber-900 shadow-sm animate-pulse">
-            <span className="flex items-center gap-2"><TrendingDown size={16} />{recheckDueCount} marked-down item{recheckDueCount === 1 ? '' : 's'} due for recheck</span>
-            <ArrowRight size={16} className="shrink-0" />
-          </Link>
-        )}
-
-        <div className="mb-6 grid grid-cols-2 gap-3">
-          {STAT_TILES.map(tile => (
-            <Link key={tile.key} to={`/dashboard?tab=${tile.tab}`} className={`rounded-2xl p-4 transition active:scale-95 ${tile.tone}`}>
-              <tile.icon size={18} />
-              <p className="mt-2 text-2xl font-black leading-none">{loading ? '–' : counts[tile.key]}</p>
-              <p className="mt-1 text-xs font-semibold">{tile.label}</p>
-            </Link>
-          ))}
-        </div>
-
-        <div className="rounded-3xl bg-white p-6 shadow-card">
-          {!loading && activeCheck && (
-            <div className="mb-4 flex items-center gap-3 rounded-xl bg-brand-50 p-3 text-sm text-brand-700">
-              <ClipboardList size={18} className="shrink-0" />
-              <span><strong>{activeCheck.name}</strong> · {activeCheck.department} · {activeCheck.month} is in progress.</span>
-            </div>
-          )}
-
-          {!loading && activeCheck && (
-            <Button className="w-full" onClick={() => navigate('/scan')}>
-              <ScanLine size={17} className="mr-2" />Continue scanning
-            </Button>
-          )}
-
-          <Button className={!loading && activeCheck ? 'mt-3 w-full' : 'w-full'} variant={!loading && activeCheck ? 'secondary' : 'primary'} onClick={() => navigate('/checks/new')}>
-            <ClipboardList size={17} className="mr-2" />Start new Code Date Check
-          </Button>
-        </div>
-
-        <p className="mt-5 text-center text-xs text-slate-400">
-          Staff dashboard, product import, and settings live under{' '}
-          <Link to="/dashboard" className="inline-flex items-center gap-0.5 font-semibold text-brand-600">Dashboard<ArrowRight size={12} /></Link>
-        </p>
+    <section className={activeCheck ? 'mt-5' : ''} aria-labelledby="today-heading">
+      <h2 id="today-heading" className="text-[17px] font-semibold">Today on the floor</h2>
+      <div className="mt-2 space-y-2">
+        <TodoRow to="/todo?tab=marked_down" value={show(counts.rechecks)} tone="text-recheck" label="Markdowns to recheck" hint="Due today — check if they sold" highlighted={counts.rechecks > 0} />
+        <TodoRow to="/todo?tab=today" value={show(counts.todayOrOverdue)} tone="text-overdue" label="Expire today or overdue" hint="Pull or mark down" />
+        <TodoRow to="/todo?tab=next5" value={show(counts.next5)} tone="text-soon" label="Expire in the next 5 days" hint="Plan markdowns" />
       </div>
-    </main>
-  )
+    </section>
+
+    <Button variant={activeCheck ? 'secondary' : 'primary'} className="mt-5 w-full" onClick={() => navigate('/checks/new')}>Start a new check</Button>
+  </AppShell>
+}
+
+function TodoRow({ to, value, tone, label, hint, highlighted = false }: { to: string; value: string; tone: string; label: string; hint: string; highlighted?: boolean }) {
+  return <Link to={to} className={`flex min-h-16 items-center gap-3.5 rounded-2xl bg-white px-4 py-3 ${highlighted ? 'ring-2 ring-recheck' : ''}`}>
+    <span className={`min-w-9 font-display text-[28px] font-extrabold ${tone}`}>{value}</span>
+    <span className="flex-1"><span className="block font-bold">{label}</span><span className="block text-sm text-muted">{hint}</span></span>
+    <ChevronRight size={20} className="text-muted" aria-hidden="true" />
+  </Link>
 }

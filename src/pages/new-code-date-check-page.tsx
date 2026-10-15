@@ -5,13 +5,12 @@ import { AppShell } from '../components/app-shell'
 import { Button } from '../components/ui/button'
 import { createCodeDateCheck } from '../services/code-date-check-service'
 import { DEPARTMENTS } from '../lib/departments'
+import { currentMonth, inputDate } from '../lib/dates'
 
-const today = new Date().toISOString().slice(0, 10)
-const currentMonth = today.slice(0, 7)
 
 export function NewCodeDateCheckPage() {
   const navigate = useNavigate()
-  const [name, setName] = useState(''); const [department, setDepartment] = useState(''); const [month, setMonth] = useState(currentMonth); const [checkDate, setCheckDate] = useState(today); const [saving, setSaving] = useState(false); const [error, setError] = useState('')
+  const [name, setName] = useState(''); const [department, setDepartment] = useState(''); const [month, setMonth] = useState(currentMonth); const [checkDate, setCheckDate] = useState(() => inputDate(new Date())); const [saving, setSaving] = useState(false); const [error, setError] = useState('')
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setSaving(true); setError('')
     try { await createCodeDateCheck({ name: name.trim() || `${department} — Check`, department, month, checkDate }); navigate('/scan', { replace: true }) }

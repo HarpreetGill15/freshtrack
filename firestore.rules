@@ -1,6 +1,11 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Only the two store logins (created in Firebase Console, see DEPLOYMENT.md) can delete:
+    // 928 (staff) and h (manager). Anyone could create their own Firebase account from the browser,
+    // so being signed in isn't enough — it must be one of these exact emails.
+    function isAdmin() { return request.auth != null && request.auth.token.email in ['928@freshtrack.local', 'h@freshtrack.local']; }
+
     match /products/{id} {
       allow read: if true;
       allow create, update: if request.resource.data.upc is string && request.resource.data.barcode is string;
@@ -19,8 +24,14 @@ service cloud.firestore {
         && request.resource.data.expirationDate == resource.data.expirationDate
         && request.resource.data.quantity is number && request.resource.data.quantity > 0
         && request.resource.data.status in ['active', 'marked_down', 'cleared', 'removed'];
-      // Cascade delete when a Code Date Check is deleted (see deleteCodeDateCheck).
-      allow delete: if true;
+      // Cascade delete when a Code Date Check is deleted (see deleteCodeDateCheck) — signed-in admin only.
+      allow delete: if isAdmin();
+    }
+
+    // Daily email lists (settings/reminders) and the send log (settings/reminderLog) — store logins only.
+    // The daily email itself runs on the server with admin access, so it isn't limited by this.
+    match /settings/{id} {
+      allow read, write: if isAdmin();
     }
 
     match /codeDateChecks/{id} {
@@ -34,7 +45,7 @@ service cloud.firestore {
       allow update: if request.resource.data.department == resource.data.department
         && request.resource.data.month == resource.data.month
         && request.resource.data.status in ['active', 'completed'];
-      allow delete: if true;
+      allow delete: if isAdmin();
     }
   }
 }

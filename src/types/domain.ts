@@ -26,6 +26,33 @@ export interface CodeDate {
   recheckAt?: Date
   createdAt?: Date
   updatedAt?: Date
+  /**
+   * Product + check details copied onto the record when it's saved, so the dashboard, home counts
+   * and export can render from one query instead of re-fetching every product and check. Older
+   * records without them still work — they fall back to the lookup (see joinCodeDates).
+   */
+  productName?: string
+  description?: string
+  upc?: string
+  vendorCode?: string
+  subDepartment?: string
+  imageUrl?: string
+  department?: string
+  codeDateCheckName?: string
+  codeDateCheckMonth?: string
+}
+
+/** The copied product/check fields above, as written onto a code date record. */
+export interface CodeDateDetails {
+  productName: string
+  description: string
+  upc: string
+  vendorCode: string
+  subDepartment: string
+  imageUrl?: string
+  department: string
+  codeDateCheckName: string
+  codeDateCheckMonth: string
 }
 
 export type CodeDateCheckStatus = 'active' | 'completed'
@@ -60,6 +87,8 @@ export interface DashboardEntry {
   /** The check's audit month, `YYYY-MM` (matches the `<input type="month">` value it was created with) — used to keep a quick re-added date from being filed under a check for a month that's already over. */
   codeDateCheckMonth: string
   createdAt?: Date
+  /** When the item was marked Sold or Removed (only set by getResolvedSince, for the dashboard charts). */
+  resolvedAt?: Date
 }
 
 export interface ImportedProduct { upc: string; description: string; vendorCode?: string; subDepartment?: string }

@@ -1,363 +1,164 @@
-import { CalendarDays, Check, CheckCircle2, ChevronDown, ClipboardList, Percent, Plus, Search, Trash2, XCircle } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { AppShell } from '../components/app-shell'
-import { Button } from '../components/ui/button'
-import { addOrIncrementCodeDate, getDashboardEntries, getDiversionStats, setCodeDateStatus } from '../services/product-service'
-import { findActiveCheckForMonth } from '../services/code-date-check-service'
-import type { CodeDateCheck, DashboardEntry, ProductStatus } from '../types/domain'
+import { getDashboardEntries, getResolvedSince } from '../services/product-service'
+import { addDays, daysUntil, shortDate } from '../lib/dates'
+import type { DashboardEntry } from '../types/domain'
 
-const currentMonth = () => new Date().toISOString().slice(0, 7)
+// Chart colours (checked for colour-blind separation): sold green / removed orange, with labels and
+// a legend so colour is never the only cue. Coming-up bars are one blue; today is drawn in ink.
+const SOLD = '#15936A', REMOVED = '#D06A10', UPCOMING = '#1D5FB5', TODAY = '#13201A'
+const WEEKS = 8
 
-type Tab = 'all' | 'today' | 'next5' | 'marked_down' | 'cleared' | 'removed'
-const TABS: { id: Tab; label: string }[] = [{ id: 'all', label: 'All active' }, { id: 'today', label: 'Today' }, { id: 'next5', label: 'Next 5 Days' }, { id: 'marked_down', label: 'Marked Down' }, { id: 'cleared', label: 'Cleared' }, { id: 'removed', label: 'Removed' }]
-const OPERATIONAL_STATUSES: ProductStatus[] = ['active', 'marked_down']
-const daysUntil = (date: Date) => Math.ceil((new Date(date).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000)
-const shortDate = (date: Date) => date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-function bucketLabel(days: number) { if (days < 0) return `${Math.abs(days)}D OVERDUE`; if (days === 0) return 'TODAY'; if (days === 1) return 'TOMORROW'; if (days <= 5) return `${days} DAYS`; return 'LATER' }
-function bucketTone(days: number) { if (days <= 0) return 'red' as const; if (days === 1) return 'orange' as const; if (days <= 5) return 'yellow' as const; return 'green' as const }
-const TONE_CLASSES = { red: ['bg-red-500', 'bg-red-50 text-red-700'], orange: ['bg-orange-500', 'bg-orange-50 text-orange-700'], yellow: ['bg-yellow-400', 'bg-yellow-50 text-yellow-800'], green: ['bg-brand-500', 'bg-brand-50 text-brand-700'], slate: ['bg-slate-300', 'bg-slate-100 text-slate-500'] } as const
-
-const byQtyDesc = (a: DashboardEntry, b: DashboardEntry) => b.quantity - a.quantity
-/** Recheck is due once its target date has arrived (today or earlier) — these are the ones that actually need someone to walk over and look at the shelf. */
-const recheckDue = (item: DashboardEntry) => item.status === 'marked_down' && item.recheckAt != null && daysUntil(item.recheckAt) <= 0
-/** Overdue/due-today rechecks sort first so they can't be scrolled past unnoticed; ties fall back to quantity. */
-const byRecheckUrgency = (a: DashboardEntry, b: DashboardEntry) => Number(recheckDue(b)) - Number(recheckDue(a)) || byQtyDesc(a, b)
-
-/** LATER can span several weeks of items — sub-grouped by exact date so the list stays scannable instead of one long undifferentiated block. */
-function groupByDate(items: DashboardEntry[]) {
-  const map = new Map<string, DashboardEntry[]>()
-  for (const item of items) { const key = item.expirationDate.toDateString(); const list = map.get(key) ?? []; list.push(item); map.set(key, list) }
-  return [...map.entries()]
-    .map(([key, dateItems]) => [key, [...dateItems].sort(byQtyDesc)] as const)
-    .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
-}
+function startOfWeek(date: Date) { const d = new Date(date); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d } // Monday
 
 export function DashboardPage() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const initialTab = TABS.find(t => t.id === searchParams.get('tab'))?.id ?? 'all'
-  const [tab, setTabState] = useState<Tab>(initialTab)
-  const setTab = useCallback((next: Tab) => { setTabState(next); setSearchParams(next === 'all' ? {} : { tab: next }, { replace: true }) }, [setSearchParams])
-  const [operational, setOperational] = useState<DashboardEntry[]>([])
+  const [open, setOpen] = useState<DashboardEntry[]>([])
   const [resolved, setResolved] = useState<DashboardEntry[]>([])
-  const [diversion, setDiversion] = useState({ soldUnits: 0, soldRecords: 0, removedUnits: 0, removedRecords: 0 })
-  const [search, setSearch] = useState(''); const [department, setDepartment] = useState('all')
   const [loading, setLoading] = useState(true); const [error, setError] = useState('')
-  const [pendingAddDate, setPendingAddDate] = useState<DashboardEntry | null>(null)
-  const [pendingExpiry, setPendingExpiry] = useState(''); const [pendingQuantity, setPendingQuantity] = useState('1')
-  // undefined = still checking, null = confirmed none exists, a check = found one to reuse.
-  const [offMonthTargetCheck, setOffMonthTargetCheck] = useState<CodeDateCheck | null | undefined>(undefined)
+  const [department, setDepartment] = useState('all')
+  const firstWeek = useMemo(() => addDays(-7 * (WEEKS - 1), startOfWeek(new Date())), [])
 
-  const loadOperational = useCallback(async () => { try { setOperational(await getDashboardEntries(OPERATIONAL_STATUSES)); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'Could not load the dashboard.') } }, [])
-
-  useEffect(() => { setLoading(true); void loadOperational().finally(() => setLoading(false)) }, [loadOperational])
-  useEffect(() => { void getDiversionStats().then(setDiversion).catch(() => {}) }, [])
   useEffect(() => {
-    if (tab !== 'cleared' && tab !== 'removed') return
-    setLoading(true)
-    getDashboardEntries([tab]).then(setResolved).catch(e => setError(e instanceof Error ? e.message : 'Could not load.')).finally(() => setLoading(false))
-  }, [tab])
-  // A quick re-date on an item from an older check first checks whether this month/department already has an active check to attach to — that's the common case once a store has run a couple of checks — before ever suggesting "start a new check".
-  useEffect(() => {
-    if (!pendingAddDate || pendingAddDate.codeDateCheckMonth === currentMonth()) { setOffMonthTargetCheck(undefined); return }
-    let cancelled = false
-    setOffMonthTargetCheck(undefined)
-    findActiveCheckForMonth(currentMonth(), pendingAddDate.department).then(check => { if (!cancelled) setOffMonthTargetCheck(check) }).catch(() => { if (!cancelled) setOffMonthTargetCheck(null) })
-    return () => { cancelled = true }
-  }, [pendingAddDate])
+    Promise.all([getDashboardEntries(), getResolvedSince(firstWeek)])
+      .then(([openItems, resolvedItems]) => { setOpen(openItems); setResolved(resolvedItems) })
+      .catch(e => setError(e instanceof Error ? e.message : 'Could not load the dashboard.'))
+      .finally(() => setLoading(false))
+  }, [firstWeek])
 
-  /** Updates the card on screen immediately instead of waiting on a write + a full dashboard reload — the previous round-trip-then-refetch approach is what made every Sold/Removed/Mark down tap feel laggy. Rolls back if the write actually fails. */
-  async function updateStatus(id: string, status: ProductStatus, recheckAt?: Date) {
-    const previous = operational.find(item => item.id === id)
-    setOperational(items => items.map(item => item.id === id ? { ...item, status, recheckAt } : item))
-    if (status === 'cleared') setDiversion(d => ({ ...d, soldUnits: d.soldUnits + (previous?.quantity ?? 0), soldRecords: d.soldRecords + 1 }))
-    else if (status === 'removed') setDiversion(d => ({ ...d, removedUnits: d.removedUnits + (previous?.quantity ?? 0), removedRecords: d.removedRecords + 1 }))
-    // Once an item goes Sold/Removed it vanishes from every active/marked-down list, so an inline "add a new date?" prompt on the card itself would never actually be seen — a standalone banner (below) works regardless of which list the item was on. Shown for every Sold/Removed action, not just same-month ones — the banner itself branches on month (see render below) so an old-month item (e.g. an overdue recheck from last month's check) still gets the "start a new check" guidance instead of silently showing nothing.
-    if (status === 'cleared' || status === 'removed') { if (previous) { setPendingAddDate(previous); setPendingExpiry(''); setPendingQuantity('1') } }
-    try { await setCodeDateStatus(id, status, recheckAt) }
-    catch (e) {
-      if (previous) setOperational(items => items.map(item => item.id === id ? previous : item))
-      if (status === 'cleared') setDiversion(d => ({ ...d, soldUnits: d.soldUnits - (previous?.quantity ?? 0), soldRecords: d.soldRecords - 1 }))
-      else if (status === 'removed') setDiversion(d => ({ ...d, removedUnits: d.removedUnits - (previous?.quantity ?? 0), removedRecords: d.removedRecords - 1 }))
-      setError(e instanceof Error ? e.message : 'Could not update status.')
+  const departments = useMemo(() => [...new Set([...open, ...resolved].map(i => i.department).filter(d => d && d !== 'Unassigned'))].sort(), [open, resolved])
+
+  const comingUp = useMemo(() => {
+    const active = open.filter(i => i.status === 'active' && (department === 'all' || i.department === department))
+    const days = Array.from({ length: 14 }, (_, offset) => ({ date: addDays(offset), units: 0 }))
+    let overdue = 0
+    for (const item of active) {
+      const d = daysUntil(item.expirationDate)
+      if (d < 0) overdue += item.quantity
+      else if (d < 14) days[d].units += item.quantity
     }
-  }
+    const biggest = active.filter(i => { const d = daysUntil(i.expirationDate); return d >= 0 && d < 14 }).sort((a, b) => b.quantity - a.quantity).slice(0, 3)
+    return { days, overdue, biggest }
+  }, [open, department])
 
-  async function confirmPendingAddDate() {
-    if (!pendingAddDate || !pendingExpiry) return
-    // Same-month items attach to their own check as-is; an older-month item attaches to whichever current-month/department check the lookup above found instead.
-    const target = pendingAddDate.codeDateCheckMonth === currentMonth() ? pendingAddDate : offMonthTargetCheck ? { ...pendingAddDate, codeDateCheckId: offMonthTargetCheck.id, codeDateCheckName: offMonthTargetCheck.name, codeDateCheckMonth: offMonthTargetCheck.month } : null
-    if (!target) return
-    await addDate(target, new Date(`${pendingExpiry}T12:00:00`), Number(pendingQuantity) || 1)
-    setPendingAddDate(null)
-  }
+  const weekly = useMemo(() => {
+    const weeks = Array.from({ length: WEEKS }, (_, i) => ({ start: addDays(7 * i, firstWeek), sold: 0, removed: 0 }))
+    for (const item of resolved.filter(i => department === 'all' || i.department === department)) {
+      if (!item.resolvedAt) continue
+      const index = Math.floor((startOfWeek(item.resolvedAt).getTime() - firstWeek.getTime()) / (7 * 86400000))
+      if (index < 0 || index >= WEEKS) continue
+      if (item.status === 'cleared') weeks[index].sold += item.quantity
+      else weeks[index].removed += item.quantity
+    }
+    const share = (list: typeof weeks) => { const sold = list.reduce((s, w) => s + w.sold, 0), total = list.reduce((s, w) => s + w.sold + w.removed, 0); return total ? Math.round((sold / total) * 100) : null }
+    return { weeks, recent: share(weeks.slice(-4)), before: share(weeks.slice(0, 4)) }
+  }, [resolved, firstWeek, department])
 
-  /** Quick re-add for an item that was already sold/removed (e.g. new stock came in with a fresh expiration) — appends the new date to the same Code Date Check the item came from, no need to start a new scan session. */
-  async function addDate(item: DashboardEntry, expirationDate: Date, quantity: number) {
-    try {
-      const result = await addOrIncrementCodeDate({ productId: item.productId, codeDateCheckId: item.codeDateCheckId, expirationDate, quantity })
-      if (result.merged) setOperational(items => items.map(i => i.id === result.id ? { ...i, quantity: result.quantity } : i))
-      else setOperational(items => [...items, { ...item, id: result.id, status: 'active', quantity, expirationDate, recheckAt: undefined, createdAt: new Date() }])
-    } catch (e) { setError(e instanceof Error ? e.message : 'Could not add a new date.') }
-  }
-
-  const source = tab === 'cleared' || tab === 'removed' ? resolved : operational
-  const departments = useMemo(() => [...new Set(source.map(i => i.department).filter(Boolean))].sort(), [source])
-
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim()
-    return source.filter(item => {
-      if (department !== 'all' && item.department !== department) return false
-      if (q && !`${item.productName} ${item.upc} ${item.department}`.toLowerCase().includes(q)) return false
-      if (tab === 'today') return item.status === 'active' && daysUntil(item.expirationDate) <= 0
-      if (tab === 'next5') return item.status === 'active' && daysUntil(item.expirationDate) <= 5
-      if (tab === 'marked_down') return item.status === 'marked_down'
-      return true
-    })
-  }, [source, department, search, tab])
-
-  const activeItems = filtered.filter(i => i.status === 'active')
-  const markedDownItems = useMemo(() => filtered.filter(i => i.status === 'marked_down').sort(byRecheckUrgency), [filtered])
-  const doneItems = useMemo(() => [...filtered].sort(byQtyDesc), [filtered])
-  const buckets = useMemo(() => {
-    const map = new Map<string, DashboardEntry[]>()
-    for (const item of activeItems) { const key = bucketLabel(daysUntil(item.expirationDate)); const list = map.get(key) ?? []; list.push(item); map.set(key, list) }
-    return [...map.entries()]
-      .map(([label, items]) => ({ label, items: [...items].sort(byQtyDesc), minDays: Math.min(...items.map(i => daysUntil(i.expirationDate))) }))
-      .sort((a, b) => a.minDays - b.minDays)
-  }, [activeItems])
-
-  const firstCardId = markedDownItems.length > 0 ? markedDownItems[0]?.id : buckets[0]?.items[0]?.id
-
-  const stats = useMemo(() => ({
-    overdue: operational.filter(i => i.status === 'active' && daysUntil(i.expirationDate) < 0).length,
-    today: operational.filter(i => i.status === 'active' && daysUntil(i.expirationDate) === 0).length,
-    next5: operational.filter(i => i.status === 'active' && daysUntil(i.expirationDate) >= 1 && daysUntil(i.expirationDate) <= 5).length,
-    markedDown: operational.filter(i => i.status === 'marked_down').length,
-    recheckDue: operational.filter(recheckDue).length,
-  }), [operational])
+  const removedByDept = useMemo(() => {
+    const since = addDays(-28)
+    const totals = new Map<string, number>()
+    for (const item of resolved) if (item.status === 'removed' && item.resolvedAt && item.resolvedAt >= since) totals.set(item.department, (totals.get(item.department) ?? 0) + item.quantity)
+    return [...totals.entries()].sort((a, b) => b[1] - a[1])
+  }, [resolved])
 
   return <AppShell>
-    <div className="flex items-start justify-between"><div><h2 className="text-2xl font-bold">Expiry dashboard</h2><p className="mt-1 text-sm text-slate-500">Grouped by expiration, highest quantity first in each group.</p></div><Link to="/scan"><Button>Scan item</Button></Link></div>
-
-    <div className="mt-4 grid grid-cols-4 gap-1.5">
-      <StatPill label="Overdue" value={stats.overdue} tone="bg-red-50 text-red-700" onClick={() => setTab('today')} />
-      <StatPill label="Due Today" value={stats.today} tone="bg-orange-50 text-orange-700" onClick={() => setTab('today')} />
-      <StatPill label="Next 5d" value={stats.next5} tone="bg-yellow-50 text-yellow-800" onClick={() => setTab('next5')} />
-      <StatPill label="Marked Down" value={stats.markedDown} tone="bg-amber-50 text-amber-800" onClick={() => setTab('marked_down')} />
+    <h1 className="text-2xl font-extrabold">Dashboard</h1>
+    <div className="-mx-5 mt-3 flex gap-2 overflow-x-auto px-5 pb-1" role="group" aria-label="Department">
+      {['all', ...departments].map(d => <button key={d} type="button" aria-pressed={department === d} onClick={() => setDepartment(d)} className={`min-h-11 shrink-0 rounded-full px-4 text-sm font-bold ${department === d ? 'bg-ink text-white' : 'border border-line bg-white'}`}>{d === 'all' ? 'All depts' : d}</button>)}
     </div>
 
-    {stats.recheckDue > 0 && tab !== 'marked_down' && <button onClick={() => setTab('marked_down')} className="mt-3 flex w-full items-center justify-between gap-2 rounded-xl border-2 border-amber-400 bg-amber-100 px-4 py-3 text-left text-sm font-bold text-amber-900 shadow-sm animate-pulse">
-      <span className="flex items-center gap-2"><Percent size={16}/>{stats.recheckDue} marked-down item{stats.recheckDue === 1 ? '' : 's'} due for recheck now</span>
-      <span className="shrink-0 underline">Review →</span>
-    </button>}
+    {error && <p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm font-bold text-overdue">{error}</p>}
+    {loading ? <p className="mt-4 rounded-2xl bg-white p-8 text-center text-muted">Loading…</p> : <div className="mt-3 space-y-3.5">
 
-    {(diversion.soldUnits + diversion.removedUnits) > 0 && <div className="mt-3 rounded-2xl bg-white p-4 shadow-card">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-slate-700">Impact so far</h3>
-        <span className="text-xs font-bold text-brand-600">{Math.round((diversion.soldUnits / (diversion.soldUnits + diversion.removedUnits)) * 100)}% sold instead of wasted</span>
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        <button onClick={() => setTab('cleared')} className="rounded-xl bg-brand-50 p-3 text-left transition active:scale-95">
-          <p className="text-2xl font-black leading-none text-brand-700">{diversion.soldUnits}</p>
-          <p className="mt-1 text-xs font-semibold text-brand-700">Units sold via markdown</p>
-        </button>
-        <button onClick={() => setTab('removed')} className="rounded-xl bg-slate-100 p-3 text-left transition active:scale-95">
-          <p className="text-2xl font-black leading-none text-slate-600">{diversion.removedUnits}</p>
-          <p className="mt-1 text-xs font-semibold text-slate-500">Units removed</p>
-        </button>
-      </div>
-    </div>}
+      <ChartCard title="Coming up" subtitle="Units expiring each day, next 14 days" table={<Table head={['Day', 'Units']} rows={comingUp.days.map(d => [shortDate(d.date), String(d.units)])} />}>
+        {comingUp.overdue > 0 && <Link to="/todo?tab=today" className="mt-2 inline-block text-sm font-bold text-overdue">{comingUp.overdue} unit{comingUp.overdue === 1 ? '' : 's'} already overdue →</Link>}
+        <BarChart
+          bars={comingUp.days.map((d, i) => ({ key: String(i), label: i === 0 ? 'Today' : shortDate(d.date), segments: [{ value: d.units, color: i === 0 ? TODAY : UPCOMING, name: 'units' }] }))}
+          axis={['Today', shortDate(addDays(7)), shortDate(addDays(13))]}
+          gap="gap-1"
+        />
+        {comingUp.biggest.length > 0 && <div className="mt-3.5 border-t border-hairline pt-2.5">
+          <p className="mb-1 text-[13px] font-bold uppercase tracking-wider text-muted">Biggest coming up</p>
+          {comingUp.biggest.map(item => <Link key={item.id} to={`/products/${item.productId}`} state={{ from: '/dashboard' }} className="flex min-h-12 items-center gap-2.5 border-b border-hairline last:border-b-0">
+            <span className="min-w-0 flex-1 truncate font-bold">{item.productName}</span>
+            <span className="text-sm text-muted">{shortDate(item.expirationDate)}</span>
+            <span className="min-w-10 text-right font-display text-lg font-extrabold">{item.quantity}</span>
+          </Link>)}
+        </div>}
+      </ChartCard>
 
-    <div className="mt-4 flex gap-2 overflow-x-auto pb-1">{TABS.map(t => <button key={t.id} onClick={() => setTab(t.id)} className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${tab === t.id ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'}`}>{t.label}{t.id === 'marked_down' && stats.recheckDue > 0 ? ` (${stats.recheckDue})` : ''}</button>)}</div>
+      <ChartCard title="Sold vs removed" subtitle="Marked-down units per week, last 8 weeks" table={<Table head={['Week of', 'Sold', 'Removed']} rows={weekly.weeks.map(w => [shortDate(w.start), String(w.sold), String(w.removed)])} />}>
+        {weekly.recent != null && <p className="mt-2.5 flex items-baseline gap-2"><span className="font-display text-[32px] font-extrabold">{weekly.recent}%</span><span className="text-sm text-muted">sold in the last 4 weeks{weekly.before != null ? `, ${weekly.recent >= weekly.before ? 'up' : 'down'} from ${weekly.before}%` : ''}</span></p>}
+        <div className="mt-2 flex gap-4 text-[13px] font-bold"><Legend color={SOLD} label="Sold" /><Legend color={REMOVED} label="Removed" /></div>
+        <BarChart
+          bars={weekly.weeks.map((w, i) => ({ key: String(i), label: `Week of ${shortDate(w.start)}`, segments: [{ value: w.sold, color: SOLD, name: 'sold' }, { value: w.removed, color: REMOVED, name: 'removed' }] }))}
+          axis={[shortDate(weekly.weeks[0].start), 'This week']}
+          gap="gap-2.5"
+        />
+      </ChartCard>
 
-    <div className="mt-3 rounded-2xl bg-white p-3 shadow-card">
-      <label className="relative block"><Search className="absolute left-3 top-3 text-slate-400" size={18}/><input className="w-full rounded-xl border bg-white py-3 pl-10 pr-3 text-sm" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search product, UPC" /></label>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button onClick={() => setDepartment('all')} className={`rounded-lg border-2 px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition ${department === 'all' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-600 hover:border-slate-400'}`}>All departments</button>
-        {departments.map(d => <button key={d} onClick={() => setDepartment(d)} className={`rounded-lg border-2 px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition ${department === d ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-600 hover:border-slate-400'}`}>{d}</button>)}
-      </div>
-    </div>
-
-    <section className="mt-5 space-y-5">
-      {loading ? <p className="rounded-2xl bg-white p-8 text-center text-sm text-slate-500">Loading…</p>
-        : error ? <p className="rounded-2xl bg-red-50 p-4 text-sm text-red-700">{error}</p>
-        : !filtered.length ? <div className="rounded-2xl border border-dashed bg-white p-10 text-center"><CalendarDays className="mx-auto text-slate-400"/><p className="mt-3 font-semibold">Nothing here</p><p className="mt-1 text-sm text-slate-500">Scan a product and add an expiration date to see it here.</p></div>
-        : <>
-          {tab !== 'today' && tab !== 'next5' && markedDownItems.length > 0 && <div>
-            <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-amber-700"><Percent size={15}/>Marked Down — Recheck Required</h3>
-            <div className="space-y-1.5">{markedDownItems.map(item => <Card key={item.id} item={item} onStatus={updateStatus} onAddDate={addDate} showLegend={item.id === firstCardId}/>)}</div>
-          </div>}
-          {tab !== 'marked_down' && buckets.length > 0 && <div>
-            <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700"><ClipboardList size={15} className="text-slate-400"/>Needs Initial Action</h3>
-            <div className="space-y-4">{buckets.map(({ label, items }) => label === 'LATER'
-              ? <div key={label}>
-                  <div className="mb-1.5 flex items-baseline justify-between"><span className="text-xs font-bold tracking-wide text-slate-500">{label}</span><span className="text-xs text-slate-400">{items.length}</span></div>
-                  <div className="space-y-3">{groupByDate(items).map(([dateKey, dateItems]) => <div key={dateKey}>
-                    <p className="mb-1 text-xs font-semibold text-slate-400">{shortDate(new Date(dateKey))}</p>
-                    <div className="space-y-1.5">{dateItems.map(item => <Card key={item.id} item={item} onStatus={updateStatus} onAddDate={addDate} showLegend={item.id === firstCardId}/>)}</div>
-                  </div>)}</div>
-                </div>
-              : <div key={label}>
-                  <div className="mb-1.5 flex items-baseline justify-between"><span className="text-xs font-bold tracking-wide text-slate-500">{label}</span><span className="text-xs text-slate-400">{items.length}</span></div>
-                  <div className="space-y-1.5">{items.map(item => <Card key={item.id} item={item} onStatus={updateStatus} onAddDate={addDate} showLegend={item.id === firstCardId}/>)}</div>
-                </div>)}</div>
-          </div>}
-          {(tab === 'cleared' || tab === 'removed') && <div className="space-y-1.5">{doneItems.map(item => <Card key={item.id} item={item} onStatus={updateStatus} onAddDate={addDate}/>)}</div>}
-        </>}
-    </section>
-
-    {pendingAddDate && (pendingAddDate.codeDateCheckMonth === currentMonth() || offMonthTargetCheck) && <div className="fixed inset-x-0 bottom-16 z-40 px-4">
-      <div className="mx-auto max-w-3xl rounded-2xl bg-white p-4 shadow-lg ring-1 ring-slate-200">
-        <p className="text-sm font-bold text-slate-900">Got new stock of "{pendingAddDate.productName}"?</p>
-        <p className="mt-0.5 text-xs text-slate-500">Add its date now, or skip.</p>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <label className="text-xs font-semibold text-slate-700">Expiration date<input type="date" className="mt-1 w-full rounded-lg border p-2 text-sm" value={pendingExpiry} onChange={e => setPendingExpiry(e.target.value)} autoFocus/></label>
-          <label className="text-xs font-semibold text-slate-700">Quantity<input type="number" min="1" className="mt-1 w-full rounded-lg border p-2 text-sm" value={pendingQuantity} onChange={e => setPendingQuantity(e.target.value)}/></label>
-        </div>
-        <div className="mt-3 flex gap-2">
-          <Button variant="secondary" className="min-h-9 flex-1 px-2 text-xs" onClick={() => setPendingAddDate(null)}>Skip</Button>
-          <Button className="min-h-9 flex-1 px-2 text-xs" disabled={!pendingExpiry} onClick={() => void confirmPendingAddDate()}>Save</Button>
-        </div>
-      </div>
-    </div>}
-
-    {pendingAddDate && pendingAddDate.codeDateCheckMonth !== currentMonth() && offMonthTargetCheck === undefined && <div className="fixed inset-x-0 bottom-16 z-40 px-4">
-      <div className="mx-auto max-w-3xl rounded-2xl bg-white p-4 text-sm text-slate-500 shadow-lg ring-1 ring-slate-200">Checking this month's checks…</div>
-    </div>}
-
-    {pendingAddDate && pendingAddDate.codeDateCheckMonth !== currentMonth() && offMonthTargetCheck === null && <div className="fixed inset-x-0 bottom-16 z-40 px-4">
-      <div className="mx-auto max-w-3xl rounded-2xl bg-white p-4 shadow-lg ring-1 ring-slate-200">
-        <p className="text-sm font-bold text-slate-900">Got new stock of "{pendingAddDate.productName}"?</p>
-        <div className="mt-3 flex gap-2">
-          <Button variant="secondary" className="min-h-9 flex-1 px-2 text-xs" onClick={() => setPendingAddDate(null)}>Dismiss</Button>
-          <Link to="/checks/new" className="flex-1" onClick={() => setPendingAddDate(null)}><Button className="min-h-9 w-full px-2 text-xs">Add another date</Button></Link>
-        </div>
-      </div>
+      <ChartCard title="Removed by department" subtitle="Units thrown out in the last 4 weeks" table={<Table head={['Department', 'Units removed']} rows={removedByDept.map(([d, u]) => [d, String(u)])} />}>
+        {removedByDept.length ? <div className="mt-3 space-y-2.5">{removedByDept.map(([dept, units]) => <div key={dept} className="grid grid-cols-[84px_minmax(0,1fr)_40px] items-center gap-2.5" role="img" aria-label={`${dept}: ${units} units removed`}>
+          <span className="truncate text-sm font-bold">{dept}</span>
+          <span className="h-4 rounded bg-ground"><span className="block h-4 rounded-r" style={{ width: `${(units / removedByDept[0][1]) * 100}%`, background: REMOVED }} /></span>
+          <span className="text-right text-sm font-bold">{units}</span>
+        </div>)}</div> : <p className="mt-3 text-sm text-muted">Nothing removed in the last 4 weeks.</p>}
+      </ChartCard>
     </div>}
   </AppShell>
 }
 
-function StatPill({ label, value, tone, onClick }: { label: string; value: number; tone: string; onClick?: () => void }) {
-  return <button type="button" onClick={onClick} className={`rounded-lg px-1.5 py-1.5 text-center transition active:scale-95 ${tone}`}>
-    <p className="text-base font-black leading-none sm:text-xl">{value}</p>
-    <p className="mt-0.5 truncate text-[10px] font-semibold leading-tight sm:text-xs">{label}</p>
-  </button>
+function ChartCard({ title, subtitle, table, children }: { title: string; subtitle: string; table: ReactNode; children: ReactNode }) {
+  const [asTable, setAsTable] = useState(false)
+  return <section className="rounded-[18px] bg-white p-4">
+    <div className="flex items-start justify-between gap-2">
+      <div><h2 className="text-[17px] font-semibold">{title}</h2><p className="mt-0.5 text-sm text-muted">{subtitle}</p></div>
+      <button type="button" onClick={() => setAsTable(v => !v)} className="min-h-11 shrink-0 px-1 text-sm font-bold text-brand-600">{asTable ? 'Chart' : 'Table'}</button>
+    </div>
+    {asTable ? <div className="mt-3">{table}</div> : children}
+  </section>
 }
 
-const ICON_BUTTON_TONES = { default: 'border border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200', danger: 'border border-red-200 bg-red-50 text-red-600 hover:bg-red-100', success: 'border border-green-200 bg-green-50 text-green-600 hover:bg-green-100' } as const
-function IconButton({ label, tone = 'default', onClick, children }: { label: string; tone?: keyof typeof ICON_BUTTON_TONES; onClick: () => void; children: ReactNode }) {
-  return <button type="button" title={label} aria-label={label} onClick={onClick} className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg transition ${ICON_BUTTON_TONES[tone]}`}>{children}</button>
+function Legend({ color, label }: { color: string; label: string }) {
+  return <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px]" style={{ background: color }} aria-hidden="true" />{label}</span>
 }
 
-/** Die-cut ticket notches (clip-path) plus a dashed "tear line" make the mark-down action read as a discount coupon rather than a generic tag icon — kept pastel so it doesn't outshine the qty badge next to it. */
-function MarkDownButton({ onClick }: { onClick: () => void }) {
-  return <button
-    type="button"
-    title="Mark down"
-    aria-label="Mark down"
-    onClick={onClick}
-    style={{ clipPath: 'polygon(0% 0%,100% 0%,100% 38%,92% 50%,100% 62%,100% 100%,0% 100%,0% 62%,8% 50%,0% 38%)' }}
-    className="relative grid h-8 w-14 shrink-0 place-items-center border border-orange-200 bg-orange-100 text-orange-600 transition hover:bg-orange-200"
-  >
-    <span className="pointer-events-none absolute inset-y-1.5 left-1/2 -translate-x-1/2 border-l border-dashed border-orange-300" />
-    <Percent size={13} strokeWidth={3} />
-  </button>
-}
+type Bar = { key: string; label: string; segments: { value: number; color: string; name: string }[] }
 
-/** Quantity is the number staff scan the shelf for — sized by magnitude so the big markdowns jump out of the list, kept pastel to match the lighter action buttons. */
-function QtyBadge({ quantity }: { quantity: number }) {
-  const tone = quantity >= 15 ? 'bg-red-100 text-red-700' : quantity >= 8 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'
-  return <div className={`grid shrink-0 place-items-center rounded-lg px-2.5 py-1.5 leading-none ${tone}`}>
-    <span className="text-base font-black">{quantity}</span>
-    <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wide opacity-70">qty</span>
+/**
+ * Column chart drawn with plain elements. Tap (or hover) a column to read its exact numbers in the
+ * line above the chart; the tallest column and the latest one are labelled directly.
+ */
+function BarChart({ bars, axis, gap }: { bars: Bar[]; axis: string[]; gap: string }) {
+  const [selected, setSelected] = useState<string | null>(null)
+  const totals = bars.map(b => b.segments.reduce((sum, s) => sum + s.value, 0))
+  const max = Math.max(1, ...totals)
+  const maxIndex = totals.indexOf(Math.max(...totals))
+  const active = bars.find(b => b.key === selected)
+  const describe = (bar: Bar) => `${bar.label}: ${bar.segments.map(s => `${s.value} ${s.name}`).join(', ')}`
+  return <div className="mt-3">
+    <p className="min-h-5 text-[13px] font-bold" aria-live="polite">{active ? describe(active) : <span className="font-normal text-muted">Tap a bar for numbers</span>}</p>
+    <div className={`mt-1 flex h-[150px] items-end border-b border-line ${gap}`}>
+      {bars.map((bar, i) => {
+        const total = totals[i]
+        const showLabel = total > 0 && (i === maxIndex || i === bars.length - 1)
+        return <button key={bar.key} type="button" aria-label={describe(bar)} aria-pressed={selected === bar.key}
+          onClick={() => setSelected(s => s === bar.key ? null : bar.key)} onMouseEnter={() => setSelected(bar.key)}
+          className={`flex h-full min-w-0 flex-1 flex-col items-center justify-end ${selected && selected !== bar.key ? 'opacity-50' : ''}`}>
+          {showLabel && <span className="mb-0.5 text-xs font-bold">{total}</span>}
+          <span className="flex w-full flex-col-reverse gap-[2px]" style={{ height: `${(total / max) * 120}px` }}>
+            {bar.segments.filter(s => s.value > 0).map((s, si, list) => <span key={s.name} className={si === list.length - 1 ? 'rounded-t' : ''} style={{ flexGrow: s.value, background: s.color }} />)}
+          </span>
+        </button>
+      })}
+    </div>
+    <div className="mt-1.5 flex justify-between text-xs text-muted">{axis.map(label => <span key={label}>{label}</span>)}</div>
   </div>
 }
 
-function Card({ item, onStatus, onAddDate, showLegend = false }: { item: DashboardEntry; onStatus: (id: string, status: ProductStatus, recheckAt?: Date) => void; onAddDate?: (item: DashboardEntry, expirationDate: Date, quantity: number) => void; showLegend?: boolean }) {
-  const days = daysUntil(item.expirationDate)
-  const isDone = item.status === 'cleared' || item.status === 'removed'
-  const urgentRecheck = item.status === 'marked_down' && recheckDue(item)
-  const tone = urgentRecheck ? 'red' : item.status === 'marked_down' ? 'orange' : isDone ? 'slate' : bucketTone(days)
-  const [bar] = TONE_CLASSES[tone]
-  const [markingDown, setMarkingDown] = useState(false)
-  const [expanded, setExpanded] = useState(false)
-  const [addingDate, setAddingDate] = useState(false)
-  const [recheckDate, setRecheckDate] = useState(new Date(Date.now() + 86400000).toISOString().slice(0, 10))
-  const [newExpiry, setNewExpiry] = useState(''); const [newQuantity, setNewQuantity] = useState('1')
-  const [offMonthTargetCheck, setOffMonthTargetCheck] = useState<CodeDateCheck | null | undefined>(undefined)
-  const meta = `${item.department} · ${shortDate(item.expirationDate)}${item.status === 'marked_down' && item.recheckAt ? ` · Recheck ${shortDate(item.recheckAt)}${urgentRecheck ? ' (due now)' : ''}` : ''}`
-  // A quick re-add only reuses this item's own Code Date Check while that check's month is still the current one — once the calendar rolls over, stapling a new-month item onto last month's check would make that check's records/export messy. Even then, an already-active check for this month/department is reused (see the lookup below) rather than always sending staff to start a brand new one.
-  const sameMonthAsCheck = item.codeDateCheckMonth === currentMonth()
-  useEffect(() => {
-    if (!addingDate || sameMonthAsCheck) { setOffMonthTargetCheck(undefined); return }
-    let cancelled = false
-    findActiveCheckForMonth(currentMonth(), item.department).then(check => { if (!cancelled) setOffMonthTargetCheck(check) }).catch(() => { if (!cancelled) setOffMonthTargetCheck(null) })
-    return () => { cancelled = true }
-  }, [addingDate, sameMonthAsCheck, item.department])
-  function submitNewDate() {
-    if (!newExpiry || !onAddDate) return
-    const target = sameMonthAsCheck ? item : offMonthTargetCheck ? { ...item, codeDateCheckId: offMonthTargetCheck.id, codeDateCheckName: offMonthTargetCheck.name, codeDateCheckMonth: offMonthTargetCheck.month } : null
-    if (!target) return
-    onAddDate(target, new Date(`${newExpiry}T12:00:00`), Number(newQuantity) || 1); setAddingDate(false); setNewExpiry(''); setNewQuantity('1')
-  }
-
-  return <article className={`overflow-hidden rounded-xl bg-white shadow-card ${isDone ? 'opacity-70' : ''}`}>
-    {showLegend && !markingDown && <div className="flex justify-end gap-1.5 border-b border-slate-100 bg-slate-50 pb-1 pr-2.5 pt-1.5 text-[8px] font-bold uppercase tracking-wide text-slate-400">
-      {item.status === 'active' && <span className="w-14 text-center">Mark down</span>}
-      <span className="w-8 text-center">Sold</span>
-      <span className="w-8 text-center">Remove</span>
-    </div>}
-    <div className="flex items-stretch gap-2.5 pr-2.5">
-      <div className={`w-1.5 shrink-0 ${bar}`}/>
-      <button type="button" onClick={() => setExpanded(v => !v)} className="flex min-w-0 flex-1 items-start gap-1.5 py-2 text-left">
-        <div className="min-w-0 flex-1">
-          <h4 className="text-sm font-bold leading-snug text-slate-900">{item.productName}</h4>
-          <p className="truncate text-xs text-slate-500">{meta}</p>
-        </div>
-        <ChevronDown size={15} className={`mt-0.5 shrink-0 text-slate-400 transition-transform ${expanded ? 'rotate-180' : ''}`}/>
-      </button>
-
-      <div className="flex shrink-0 items-center"><QtyBadge quantity={item.quantity} /></div>
-
-      {item.status === 'active' && !markingDown && <div className="flex shrink-0 items-center gap-1.5">
-        <MarkDownButton onClick={() => setMarkingDown(true)} />
-        <IconButton label="Cleared" tone="success" onClick={() => onStatus(item.id, 'cleared')}><Check size={15}/></IconButton>
-        <IconButton label="Removed" tone="danger" onClick={() => onStatus(item.id, 'removed')}><Trash2 size={15}/></IconButton>
-      </div>}
-      {item.status === 'marked_down' && <div className="flex shrink-0 items-center gap-1">
-        <IconButton label="Cleared" tone="success" onClick={() => onStatus(item.id, 'cleared')}><Check size={15}/></IconButton>
-        <IconButton label="Removed" tone="danger" onClick={() => onStatus(item.id, 'removed')}><Trash2 size={15}/></IconButton>
-      </div>}
-      {isDone && !addingDate && <div className="flex shrink-0 items-center gap-1.5 pr-0.5 text-slate-400">
-        {item.status === 'cleared' ? <CheckCircle2 size={16}/> : <XCircle size={16}/>}
-        {onAddDate && <IconButton label="Add new date" onClick={() => setAddingDate(true)}><Plus size={15}/></IconButton>}
-      </div>}
-    </div>
-    {expanded && <div className="border-t border-slate-100 bg-slate-50 px-3 py-2.5 text-sm">
-      <p className="font-mono text-xs font-semibold tracking-wide text-slate-600">UPC: {item.upc || '—'}</p>
-      <p className="mt-1 text-slate-700">{item.description || item.productName}</p>
-      {(item.vendorCode || item.subDepartment) && <p className="mt-1 text-xs text-slate-500">{[item.vendorCode && `Vendor ${item.vendorCode}`, item.subDepartment].filter(Boolean).join(' · ')}</p>}
-      <Link to={`/products/${item.productId}`} className="mt-2 inline-block text-xs font-bold text-brand-600 underline">Open full product page →</Link>
-    </div>}
-    {item.status === 'active' && markingDown && <div className="border-t border-slate-100 bg-amber-50 p-3">
-      <label className="text-xs font-semibold text-amber-800">Recheck date<input type="date" className="mt-1 w-full rounded-lg border p-2 text-sm" value={recheckDate} onChange={e => setRecheckDate(e.target.value)} /></label>
-      <div className="mt-2 flex gap-2"><Button variant="secondary" className="min-h-8 flex-1 px-2 text-xs" onClick={() => setMarkingDown(false)}>Cancel</Button><Button className="min-h-8 flex-1 px-2 text-xs" onClick={() => onStatus(item.id, 'marked_down', new Date(`${recheckDate}T12:00:00`))}>Confirm</Button></div>
-    </div>}
-    {isDone && addingDate && (sameMonthAsCheck || offMonthTargetCheck) && <div className="border-t border-slate-100 bg-brand-50 p-3">
-      <p className="mb-2 text-xs font-semibold text-brand-800">Got new stock of this on the shelf? Add its date now, or skip.</p>
-      <div className="grid grid-cols-2 gap-2">
-        <label className="text-xs font-semibold text-brand-800">Expiration date<input type="date" className="mt-1 w-full rounded-lg border p-2 text-sm" value={newExpiry} onChange={e => setNewExpiry(e.target.value)} autoFocus /></label>
-        <label className="text-xs font-semibold text-brand-800">Quantity<input type="number" min="1" className="mt-1 w-full rounded-lg border p-2 text-sm" value={newQuantity} onChange={e => setNewQuantity(e.target.value)} /></label>
-      </div>
-      <div className="mt-2 flex gap-2"><Button variant="secondary" className="min-h-8 flex-1 px-2 text-xs" onClick={() => setAddingDate(false)}>Skip</Button><Button className="min-h-8 flex-1 px-2 text-xs" disabled={!newExpiry} onClick={submitNewDate}>Save</Button></div>
-    </div>}
-    {isDone && addingDate && !sameMonthAsCheck && offMonthTargetCheck === undefined && <div className="border-t border-slate-100 bg-slate-50 p-3 text-xs text-slate-500">Checking this month's checks…</div>}
-    {isDone && addingDate && !sameMonthAsCheck && offMonthTargetCheck === null && <div className="border-t border-slate-100 bg-slate-50 p-3">
-      <div className="flex gap-2">
-        <Button variant="secondary" className="min-h-8 flex-1 px-2 text-xs" onClick={() => setAddingDate(false)}>Cancel</Button>
-        <Link to="/checks/new" className="flex-1"><Button className="min-h-8 w-full px-2 text-xs">Add another date</Button></Link>
-      </div>
-    </div>}
-  </article>
+function Table({ head, rows }: { head: string[]; rows: string[][] }) {
+  return <div className="max-h-72 overflow-auto rounded-xl border border-hairline"><table className="w-full text-sm">
+    <thead className="sticky top-0 bg-ground"><tr>{head.map((h, i) => <th key={h} className={`px-3 py-2 font-bold ${i ? 'text-right' : 'text-left'}`}>{h}</th>)}</tr></thead>
+    <tbody>{rows.map(row => <tr key={row[0]} className="border-t border-hairline">{row.map((cell, i) => <td key={i} className={`px-3 py-2 ${i ? 'text-right font-bold' : ''}`}>{cell}</td>)}</tr>)}</tbody>
+  </table></div>
 }
