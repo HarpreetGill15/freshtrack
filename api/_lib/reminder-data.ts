@@ -2,20 +2,36 @@ import { cert, getApps, initializeApp, type ServiceAccount } from 'firebase-admi
 import { getFirestore, Timestamp, type Firestore } from 'firebase-admin/firestore'
 
 // Firebase Admin credentials come from server-only Vercel env vars — never committed, never sent to
-// the browser. Either paste the whole service-account JSON file into FIREBASE_SERVICE_ACCOUNT (easiest),
-// or set FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY separately.
+// the browser. FIREBASE_SERVICE_ACCOUNT can hold either the whole service-account .json file or just
+// its private key (with or without the BEGIN/END lines). The project ID and service-account email
+// aren't secret, so they default to this project's; the private key is the only secret part.
+const DEFAULT_PROJECT_ID = 'freshtrack-590fc'
+const DEFAULT_CLIENT_EMAIL = 'firebase-adminsdk-fbsvc@freshtrack-590fc.iam.gserviceaccount.com'
+
+/** Rebuilds a valid PEM private key from however it was pasted (escaped \n, missing lines, quotes, spaces). */
+function toPem(raw: string) {
+  const body = raw
+    .replace(/\\n/g, '\n')
+    .replace(/-----(BEGIN|END) PRIVATE KEY-----/g, '')
+    .replace(/["',\s]/g, '')
+  const lines = body.match(/.{1,64}/g) ?? []
+  return `-----BEGIN PRIVATE KEY-----\n${lines.join('\n')}\n-----END PRIVATE KEY-----\n`
+}
+
+function credentials() {
+  const raw = (process.env.FIREBASE_SERVICE_ACCOUNT ?? '').trim()
+  if (raw.startsWith('{')) {
+    const parsed = JSON.parse(raw) as { project_id?: string; client_email?: string; private_key?: string }
+    return { projectId: parsed.project_id || DEFAULT_PROJECT_ID, clientEmail: parsed.client_email || DEFAULT_CLIENT_EMAIL, privateKey: toPem(parsed.private_key ?? '') }
+  }
+  const key = raw || process.env.FIREBASE_PRIVATE_KEY || ''
+  if (!key) throw new Error('FIREBASE_SERVICE_ACCOUNT is not set in Vercel.')
+  return { projectId: process.env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID, clientEmail: process.env.FIREBASE_CLIENT_EMAIL || DEFAULT_CLIENT_EMAIL, privateKey: toPem(key) }
+}
+
 export function adminApp() {
   if (getApps().length) return getApps()[0]
-  const json = process.env.FIREBASE_SERVICE_ACCOUNT
-  if (json) {
-    const parsed = JSON.parse(json) as { project_id: string; client_email: string; private_key: string }
-    return initializeApp({ credential: cert({ projectId: parsed.project_id, clientEmail: parsed.client_email, privateKey: parsed.private_key } as ServiceAccount) })
-  }
-  const projectId = process.env.FIREBASE_PROJECT_ID
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
-  if (!projectId || !clientEmail || !privateKey) throw new Error('Firebase Admin credentials are not configured on the server (FIREBASE_SERVICE_ACCOUNT).')
-  return initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) })
+  return initializeApp({ credential: cert(credentials() as ServiceAccount) })
 }
 
 export const DEPARTMENTS = ['Grocery', 'Dairy', 'Meat', 'Produce'] as const
