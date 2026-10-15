@@ -55,7 +55,7 @@ export function CheckFinishPage() {
     <section className="mt-6 rounded-2xl bg-white p-5 shadow-card">
       <div className="flex items-center gap-3"><FileSpreadsheet className="text-brand-600" size={22}/><div><p className="font-semibold">Export Excel</p><p className="text-xs text-slate-500">All records for this check, sorted by nearest expiry.</p></div></div>
       <Button variant="secondary" className="mt-4 w-full" disabled={!entries.length} onClick={() => void downloadCheckExport(check, entries).catch(() => setError('Could not create the Excel file.'))}><Download size={17} className="mr-2"/>Download .xlsx</Button>
-      <p className="mt-2 text-center text-xs text-slate-400">On a computer? Go to More → Checks to export from there instead.</p>
+      <p className="mt-2 text-center text-xs text-slate-400">On a computer? Use the Export tab to download it from there instead.</p>
     </section>
 
     <div className="mt-6 flex gap-3">

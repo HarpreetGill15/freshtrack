@@ -1,15 +1,17 @@
-import { BarChart3, Home, ListChecks, MoreHorizontal, ScanLine } from 'lucide-react'
+import { BarChart3, Download, Home, ListChecks, MoreHorizontal, ScanLine } from 'lucide-react'
 import { NavLink, useLocation } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { cn } from '../lib/utils'
 
 // One layout for everyone — clerks and managers see the same tabs. Back-office pages
-// (Checks, Import, Settings, Help) live under More.
-const MORE_PATHS = ['/more', '/checks', '/product-import', '/settings', '/help']
+// (Import, Settings, Help) live under More.
+const MORE_PATHS = ['/more', '/product-import', '/settings', '/help']
 const navigation = [
   { to: '/', label: 'Home', icon: Home, end: true },
   { to: '/scan', label: 'Scan', icon: ScanLine },
   { to: '/todo', label: 'To-do', icon: ListChecks },
+  // The checks list, where every check is exported to Excel (also continue / finish / delete).
+  { to: '/checks', label: 'Export', icon: Download, end: true },
   { to: '/dashboard', label: 'Dashboard', icon: BarChart3 },
   { to: '/more', label: 'More', icon: MoreHorizontal },
 ]
@@ -27,8 +29,8 @@ export function AppShell({ children, footer }: { children: ReactNode; footer?: R
     <main className={cn('mx-auto w-full max-w-3xl flex-1 px-5 pt-2', footer ? 'pb-48' : 'pb-28')}>{children}</main>
     {footer && <div className="fixed inset-x-0 bottom-[76px] z-30 bg-ground/95 px-5 pb-3 pt-3 backdrop-blur"><div className="mx-auto max-w-3xl">{footer}</div></div>}
     <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 border-t border-hairline bg-white pb-[max(env(safe-area-inset-bottom),8px)]">
-      <div className="mx-auto grid max-w-3xl grid-cols-5 px-1 pt-1.5">
-        {navigation.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => cn('flex min-h-[52px] flex-col items-center justify-center gap-1 text-xs font-bold', (to === '/more' ? inMore : isActive) ? 'text-brand-600' : 'text-muted')}>
+      <div className="mx-auto grid max-w-3xl grid-cols-6 px-0.5 pt-1.5">
+        {navigation.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => cn('flex min-h-[52px] min-w-0 flex-col items-center justify-center gap-1 text-[11px] font-bold sm:text-xs', (to === '/more' ? inMore : isActive) ? 'text-brand-600' : 'text-muted')}>
           <Icon size={22} strokeWidth={2.2} aria-hidden="true" />{label}
         </NavLink>)}
       </div>

@@ -47,8 +47,8 @@ export function ChecksListPage() {
   }
 
   return <AppShell>
-    <h2 className="text-2xl font-bold">Code Date Checks</h2>
-    <p className="mt-1 text-sm text-slate-500">Export or finish any check from here — works from a computer regardless of which phone did the scanning. Continue scanning to add more items to an unfinished check, even from a different device.</p>
+    <h1 className="text-2xl font-extrabold">Export</h1>
+    <p className="mt-1 text-muted">Download any check as an Excel file — works from any phone or computer, whichever one did the scanning. You can also continue or finish a check here.</p>
     {error && <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     <section className="mt-6 space-y-3">
       {loading ? <p className="rounded-2xl bg-white p-8 text-center text-sm text-slate-500">Loading…</p>
