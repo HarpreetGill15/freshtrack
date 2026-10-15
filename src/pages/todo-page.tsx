@@ -1,6 +1,6 @@
 import { CalendarDays, CheckCircle2, ChevronDown, Search, XCircle } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { AppShell } from '../components/app-shell'
 import { BottomSheet } from '../components/bottom-sheet'
 import { Button } from '../components/ui/button'
@@ -132,6 +132,7 @@ export function TodoPage() {
 
 function TodoCard({ item, onAction, onSheet }: { item: DashboardEntry; onAction: (status: ProductStatus) => void; onSheet: (kind: Sheet['kind']) => void }) {
   const [expanded, setExpanded] = useState(false)
+  const location = useLocation()
   const isDone = item.status === 'cleared' || item.status === 'removed'
   const meta = item.status === 'marked_down'
     ? `${item.department} · expires ${shortDate(item.expirationDate)}${item.recheckAt ? ` · recheck ${shortDate(item.recheckAt)}` : ''}`
@@ -147,7 +148,7 @@ function TodoCard({ item, onAction, onSheet }: { item: DashboardEntry; onAction:
     {expanded && <div className="mt-2 rounded-xl bg-ground px-3 py-2.5 text-sm">
       <p className="font-mono text-xs font-bold text-muted">UPC {item.upc || '—'}</p>
       {item.description && item.description !== item.productName && <p className="mt-1">{item.description}</p>}
-      <Link to={`/products/${item.productId}`} className="mt-1 inline-block py-1 text-sm font-bold text-brand-600">Open product page</Link>
+      <Link to={`/products/${item.productId}`} state={{ from: location.pathname + location.search }} className="mt-1 inline-block py-1 text-sm font-bold text-brand-600">Open product page</Link>
     </div>}
     {isDone
       ? <div className="mt-2.5 flex items-center gap-2">

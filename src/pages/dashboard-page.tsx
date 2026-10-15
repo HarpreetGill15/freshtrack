@@ -79,7 +79,7 @@ export function DashboardPage() {
         />
         {comingUp.biggest.length > 0 && <div className="mt-3.5 border-t border-hairline pt-2.5">
           <p className="mb-1 text-[13px] font-bold uppercase tracking-wider text-muted">Biggest coming up</p>
-          {comingUp.biggest.map(item => <Link key={item.id} to={`/products/${item.productId}`} className="flex min-h-12 items-center gap-2.5 border-b border-hairline last:border-b-0">
+          {comingUp.biggest.map(item => <Link key={item.id} to={`/products/${item.productId}`} state={{ from: '/dashboard' }} className="flex min-h-12 items-center gap-2.5 border-b border-hairline last:border-b-0">
             <span className="min-w-0 flex-1 truncate font-bold">{item.productName}</span>
             <span className="text-sm text-muted">{shortDate(item.expirationDate)}</span>
             <span className="min-w-10 text-right font-display text-lg font-extrabold">{item.quantity}</span>

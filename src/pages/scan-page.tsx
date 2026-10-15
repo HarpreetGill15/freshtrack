@@ -85,7 +85,7 @@ export function ScanPage() {
         <h1 className="text-[22px] font-extrabold leading-tight">{product.name}</h1>
         {product.description && product.description !== product.name && <p className="mt-1 text-sm text-muted">{product.description}</p>}
         <p className="mt-1.5 text-sm text-muted">UPC {product.upc || product.barcode}{product.subDepartment ? ` · ${product.subDepartment}` : ''}</p>
-        <Link to={`/products/${encodeURIComponent(product.id)}`} className="mt-1 inline-block py-2 text-sm font-bold text-brand-600">See other dates for this item</Link>
+        <Link to={`/products/${encodeURIComponent(product.id)}`} state={{ from: '/scan' }} className="mt-1 inline-block py-2 text-sm font-bold text-brand-600">See other dates for this item</Link>
       </section>
       <form className="mt-3.5 space-y-3.5 rounded-[18px] bg-white p-4" onSubmit={e => { e.preventDefault(); void saveDate(true) }}>
         <label className="flex flex-col gap-1.5 text-[15px] font-bold">Expiry date
