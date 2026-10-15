@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAuth } from 'firebase-admin/auth'
 import { Resend } from 'resend'
-import { adminApp, DEPARTMENTS, fetchReminderRows, getFirestore, getStoreEmails, STORE_EMAILS, storeDay, storeHour, type ReminderRow } from './_lib/reminder-data'
+import { adminApp, DEPARTMENTS, fetchReminderRows, getFirestore, getStoreEmails, STORE_EMAILS, storeDay, storeHour, type ReminderRow } from './_lib/reminder-data.js'
 
 /**
  * Daily code-date emails — a separate email per department (Grocery, Dairy, Meat, Produce), all sent

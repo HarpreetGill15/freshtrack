@@ -30,8 +30,11 @@ async function callSendReminder(dryRun: boolean, to: string[] = []) {
   if (!user) throw new Error('Sign in first.')
   const query = dryRun ? '?dryRun=1' : to.length ? `?to=${encodeURIComponent(to.join(','))}` : ''
   const response = await fetch(`/api/send-reminder${query}`, { method: 'POST', headers: { Authorization: `Bearer ${await user.getIdToken()}` } })
-  const data = await response.json().catch(() => ({})) as { error?: string; emails?: EmailPreview[]; results?: SendResult[] }
-  if (!response.ok) throw new Error(data.error ?? 'The email service did not respond.')
+  const raw = await response.text()
+  let data: { error?: string; emails?: EmailPreview[]; results?: SendResult[] } = {}
+  try { data = JSON.parse(raw) } catch { /* not JSON — e.g. the server crashed before it could answer */ }
+  // Show the real reason (status code + the start of the server's reply) so problems can be fixed quickly.
+  if (!response.ok) throw new Error(data.error ?? `The email service failed (${response.status}): ${raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160) || 'no reply'}`)
   return data
 }
 export const previewEmails = async () => (await callSendReminder(true)).emails ?? []
