@@ -40,24 +40,27 @@ keeping this config secret. This is standard Firebase web practice.
 3. Add the frontend env vars from step 2, plus the server-only ones from step 4 and 5 below.
 4. Deploy. `/api/reminders` is auto-detected as a serverless function from the `api/` directory.
 
-### Back-office sign-in (Dashboard / Checks / Import / Settings)
+### Manager sign-in (free — Firebase email/password)
 
-The sign-in username and password are **not** in the code. They live only in Vercel env vars and
-are checked by `/api/login`, which hands back a Firebase sign-in carrying an `admin` flag.
-`firestore.rules` requires that flag to delete a check or its code dates.
+The manager login is a normal Firebase Authentication account (free on the Spark plan). No Vercel
+settings or server code are involved, and the password is not in this repo.
 
-1. Firebase Console > Authentication > **Get started** (no sign-in provider needs to be turned on —
-   custom tokens work as soon as Authentication is enabled).
-2. Vercel env vars (Production and Preview):
-   - `ADMIN_USERNAME` and `ADMIN_PASSWORD` — the back-office login.
-   - `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` — the same service-account
-     values described in step 4 below (the login needs them to issue the sign-in).
-3. Deploy the code **before** the new rules: `firebase deploy --only firestore:rules` (or paste
-   `firestore.rules` into Console > Firestore > Rules > Publish). Until the rules are published,
-   deletes still work without sign-in.
-4. After the first deploy, sign in and open **Settings > Speed up old records** once. Records saved
-   from now on already include the product/check details the dashboard needs; this fills them in
-   on older records so the dashboard stops looking each one up.
+1. Firebase Console → **Authentication** → **Get started** → **Sign-in method** → turn on
+   **Email/Password** (leave "Email link" off) → Save.
+2. Authentication → **Users** → **Add user**:
+   - Email: `h@freshtrack.local`
+   - Password: `928-freshtrack`
+
+   Staff then sign in with username **h** and password **928** — the app adds the
+   `@freshtrack.local` and `-freshtrack` parts automatically (Firebase needs an email address
+   and at least 6 characters). To change the password later, edit this user in the Console and
+   keep the `-freshtrack` ending.
+3. Publish the new `firestore.rules` (Console → Firestore → Rules → paste → Publish, or
+   `firebase deploy --only firestore:rules`). Only `h@freshtrack.local` can delete checks; to add
+   another manager, add a user in step 2 and add their email to the list in `isAdmin()`.
+4. After the first deploy, sign in and open **More → Settings → Speed up old records** once.
+   Records saved from now on already include the product/check details the lists need; this fills
+   them in on older records so lists stop looking each one up.
 
 ## 4. Daily email (Vercel Cron + Resend) — recommended
 

@@ -1,8 +1,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Set by /api/login (custom token with an `admin` claim) — only the signed-in back office can delete.
-    function isAdmin() { return request.auth != null && request.auth.token.admin == true; }
+    // Only the manager account (created in Firebase Console, see DEPLOYMENT.md) can delete.
+    // Anyone could create their own Firebase account from the browser, so being signed in isn't
+    // enough — it must be this exact email. Add more managers by adding their emails to the list.
+    function isAdmin() { return request.auth != null && request.auth.token.email in ['h@freshtrack.local']; }
 
     match /products/{id} {
       allow read: if true;

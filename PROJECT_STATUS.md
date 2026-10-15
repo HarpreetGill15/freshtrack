@@ -87,11 +87,11 @@ this was previously missing entirely and would have failed silently). Added the 
 the new index to show Enabled before testing Finish Check / Excel export.
 
 ## 14. Authentication -- Updated
-Back-office sign-in (Dashboard, Checks, Import, Settings) is checked server-side by `/api/login`
-against `ADMIN_USERNAME` / `ADMIN_PASSWORD` Vercel env vars -- the credentials are no longer in the
-source code. A correct login gets a Firebase session with an `admin` flag, and `firestore.rules`
-requires that flag to delete a check or its code dates. The check-creation/scan/finish workflow
-still needs no login. Setup steps are in `DEPLOYMENT.md` (section 3).
+Manager sign-in (Import, Settings, deleting a check) uses Firebase Authentication email/password,
+free on the Spark plan. Username `h` maps to `h@freshtrack.local`; the password is set in Firebase
+Console, not in the code. `firestore.rules` only lets that email delete checks or code dates.
+Scanning, the To-do list, the Dashboard and the Checks list need no sign-in. Setup in
+`DEPLOYMENT.md` (section 3).
 
 ## 15. UI cleanup -- Partial, deliberately deprioritized
 Per your own stated priority order (#12 of 14), I did not do a full visual polish pass this round --
