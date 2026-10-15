@@ -66,10 +66,11 @@ Scanning, the To-do list and the Checks list need no login.
 
 ## 4. Daily emails (Vercel Cron + Resend, both free)
 
-Every morning at 7 AM (Toronto time) each department — Grocery, Dairy, Meat, Produce — gets its own
-email listing its markdowns to recheck, items to pull or mark down today, and items expiring in the
-next 5 days. An optional "All departments" list gets one combined email. A department with nothing
-due gets no email that day. Who gets what is set in the app: **More → Settings → Daily emails**.
+Every morning at 7 AM (Toronto time) a separate email for each department — Grocery, Dairy, Meat,
+Produce — goes to the store email. Each is a plain, printable checklist (no links): markdowns to
+recheck, items to pull or mark down today, and items expiring in the next 5 days, with a tick box per
+item. A department with nothing due gets no email that day. The store email is set in the app:
+**More → Settings → Daily emails**.
 
 ### One-time setup
 
@@ -84,8 +85,8 @@ due gets no email that day. Who gets what is set in the app: **More → Settings
    - `CRON_SECRET` — any long random text (e.g. mash the keyboard for 30+ characters). Vercel sends it
      with the 7 AM call so nobody else can trigger the emails.
 4. Redeploy (or push any change) so the new settings take effect.
-5. In the app: sign in → More → Settings → Daily emails → type the emails for each department →
-   Save → **Preview today** to check, then **Send test now**.
+5. In the app: sign in → More → Settings → Daily emails → type the store email → Save →
+   **Preview today** to check, then **Send test now**.
 
 The schedule in `vercel.json` runs at 11:00 and 12:00 UTC; whichever is 7 AM in Toronto that day
 (summer or winter time) sends, the other does nothing, and a log in Firestore (`settings/reminderLog`)
@@ -94,7 +95,7 @@ prevents a double send. Vercel's free plan may run a scheduled job any time with
 ### Sending to other people (needs a domain)
 
 Until you verify a domain, Resend only delivers to **the email address you signed up to Resend
-with** — perfect for testing, but department leads won't receive anything. To send to anyone:
+with** — perfect for testing, but the store email won't receive anything. To send to anyone:
 Resend → Domains → Add domain (one you own, e.g. a ~$15/year `.ca`) → add the DNS records it shows →
 then set `RESEND_FROM_EMAIL` in Vercel, e.g. `FreshTrack <codedates@yourdomain.ca>`.
 

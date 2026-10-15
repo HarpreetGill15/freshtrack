@@ -2,29 +2,16 @@ import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { getAuth } from 'firebase/auth'
 import { app, db, firebaseNotConfiguredMessage } from '../lib/firebase'
 
-export const EMAIL_LISTS = [
-  { key: 'all', label: 'All departments', hint: 'One email with everything — e.g. the store manager' },
-  { key: 'Grocery', label: 'Grocery', hint: '' },
-  { key: 'Dairy', label: 'Dairy', hint: '' },
-  { key: 'Meat', label: 'Meat', hint: '' },
-  { key: 'Produce', label: 'Produce', hint: '' },
-] as const
-export type EmailListKey = (typeof EMAIL_LISTS)[number]['key']
-export type Recipients = Record<EmailListKey, string[]>
-
 const settingsRef = () => { if (!db) throw new Error(firebaseNotConfiguredMessage); return doc(db, 'settings', 'reminders') }
-const empty = (): Recipients => ({ all: [], Grocery: [], Dairy: [], Meat: [], Produce: [] })
 
-/** Who gets each daily email. Readable/writable only by the store logins (firestore.rules). */
-export async function getRecipients(): Promise<Recipients> {
-  const data = (await getDoc(settingsRef())).data()?.recipients ?? {}
-  const result = empty()
-  for (const { key } of EMAIL_LISTS) result[key] = Array.isArray(data[key]) ? data[key].map(String) : []
-  return result
+/** The store email address(es) every department's daily email goes to. Store logins only (firestore.rules). */
+export async function getStoreEmails(): Promise<string[]> {
+  const data = (await getDoc(settingsRef())).data()
+  return Array.isArray(data?.storeEmails) ? data.storeEmails.map(String) : []
 }
 
-export async function saveRecipients(recipients: Recipients) {
-  await setDoc(settingsRef(), { recipients, updatedAt: serverTimestamp() }, { merge: true })
+export async function saveStoreEmails(storeEmails: string[]) {
+  await setDoc(settingsRef(), { storeEmails, updatedAt: serverTimestamp() }, { merge: true })
 }
 
 /** Splits what was typed (commas, spaces, new lines) into addresses; returns the ones that don't look like emails too. */

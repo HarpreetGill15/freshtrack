@@ -95,13 +95,10 @@ export async function fetchReminderRows(database: Firestore, statusParam?: strin
   return rows.filter(r => r.status === 'marked_down' ? r.recheckDue : r.daysRemaining <= 5)
 }
 
-/** Who gets which email — edited in the app under More → Settings, stored at settings/reminders. */
-export type ReminderRecipients = { all: string[] } & Record<(typeof DEPARTMENTS)[number], string[]>
-export async function getRecipients(database: Firestore): Promise<ReminderRecipients> {
+/** The store's email address(es) — every department's email goes here. Set in the app under More → Settings (settings/reminders). */
+export async function getStoreEmails(database: Firestore): Promise<string[]> {
   const data = (await database.collection('settings').doc('reminders').get()).data() ?? {}
-  const list = (value: unknown) => Array.isArray(value) ? value.map(String).map(s => s.trim()).filter(Boolean) : []
-  const recipients = (data.recipients ?? {}) as Record<string, unknown>
-  return { all: list(recipients.all), Grocery: list(recipients.Grocery), Dairy: list(recipients.Dairy), Meat: list(recipients.Meat), Produce: list(recipients.Produce) }
+  return Array.isArray(data.storeEmails) ? data.storeEmails.map(String).map((s: string) => s.trim()).filter(Boolean) : []
 }
 
 export { getFirestore }
