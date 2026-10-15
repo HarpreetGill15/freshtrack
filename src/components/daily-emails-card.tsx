@@ -38,9 +38,12 @@ export function DailyEmailsCard() {
   }
 
   async function sendTest() {
-    if (!window.confirm('Send today\'s department emails to the store email now? The subject will start with [Test].')) return
+    const { valid, invalid } = parseEmails(text ?? '')
+    if (invalid.length) { setMessage(`This doesn't look like an email address: ${invalid.join(', ')}`); return }
+    if (!valid.length) { setMessage('Type an email address in the box above first.'); return }
+    if (!window.confirm(`Send today's department emails to ${valid.join(', ')} now? The subject will start with [Test].`)) return
     setBusy('test'); setMessage(''); setPreviews(null)
-    try { setResults(await sendTestEmails()) } catch (e) { setMessage(e instanceof Error ? e.message : 'Could not send.') } finally { setBusy(null) }
+    try { setResults(await sendTestEmails(valid)) } catch (e) { setMessage(e instanceof Error ? e.message : 'Could not send.') } finally { setBusy(null) }
   }
 
   return <article className="rounded-2xl bg-white p-4">
@@ -48,7 +51,7 @@ export function DailyEmailsCard() {
     {text == null ? <p className="mt-3 text-sm text-muted">Loading…</p> : <>
       <label className="mt-4 block">
         <span className="font-bold">Store email</span>
-        <span className="block text-sm text-muted">Add more than one on separate lines if needed.</span>
+        <span className="block text-sm text-muted">Add more than one on separate lines if needed. Send test goes to whatever is typed here, even before saving.</span>
         <textarea rows={2} value={text} onChange={e => setText(e.target.value)} placeholder="store@example.com" autoCapitalize="none" autoCorrect="off" spellCheck={false} inputMode="email" className="mt-1 w-full rounded-xl border-2 border-line px-3 py-2 text-base" />
       </label>
       <Button className="mt-3 w-full" disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save store email'}</Button>

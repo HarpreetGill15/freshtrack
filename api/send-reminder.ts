@@ -42,7 +42,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if ((await logRef.get()).data()?.lastSentDay === today) return res.status(200).json({ skipped: 'Already sent today.' })
     }
 
-    const [rows, storeEmails] = await Promise.all([fetchReminderRows(database, undefined, undefined, now), getStoreEmails(database)])
+    const [rows, savedEmails] = await Promise.all([fetchReminderRows(database, undefined, undefined, now), getStoreEmails(database)])
+    // A test send from Settings can go to whatever is typed in the Store email box, saved or not.
+    const typed = !isCron && typeof req.query.to === 'string' ? req.query.to.split(',').map(e => e.trim()).filter(e => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) : []
+    const storeEmails = typed.length ? typed : savedEmails
     const emails = DEPARTMENTS.map(department => {
       const departmentRows = rows.filter(r => r.area === department)
       return { list: department, to: storeEmails, rows: departmentRows, ...buildEmail(department, departmentRows, today) }
@@ -62,7 +65,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const results: { list: string; to: string[]; count: number; sent: boolean; reason?: string }[] = []
     for (const email of emails) {
       if (!email.to.length) { results.push({ list: email.list, to: [], count: email.rows.length, sent: false, reason: 'No store email set' }); continue }
-      if (!email.rows.length) { results.push({ list: email.list, to: email.to, count: 0, sent: false, reason: 'Nothing due today' }); continue }
+      // A test on a day with nothing due still sends one email (the first department's "nothing due") so you can see it arrive.
+      const sendEmptyForTest = !isCron && !emails.some(e => e.rows.length) && email === emails[0]
+      if (!email.rows.length && !sendEmptyForTest) { results.push({ list: email.list, to: email.to, count: 0, sent: false, reason: 'Nothing due today' }); continue }
       const result = await resend.emails.send({ from, to: email.to, subject: isCron ? email.subject : `[Test] ${email.subject}`, html: email.html })
       results.push({ list: email.list, to: email.to, count: email.rows.length, sent: !result.error, reason: result.error?.message })
       await new Promise(resolve => setTimeout(resolve, 600)) // stay under Resend's free-plan rate limit

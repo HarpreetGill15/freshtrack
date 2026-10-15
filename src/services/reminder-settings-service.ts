@@ -25,13 +25,15 @@ export type EmailPreview = { list: string; to: string[]; count: number; subject:
 export type SendResult = { list: string; to: string[]; count: number; sent: boolean; reason?: string }
 
 /** Calls the daily-email function as the signed-in store login: a preview (nothing sent) or a test send right now. */
-async function callSendReminder(dryRun: boolean) {
+async function callSendReminder(dryRun: boolean, to: string[] = []) {
   const user = app ? getAuth(app).currentUser : null
   if (!user) throw new Error('Sign in first.')
-  const response = await fetch(`/api/send-reminder${dryRun ? '?dryRun=1' : ''}`, { method: 'POST', headers: { Authorization: `Bearer ${await user.getIdToken()}` } })
+  const query = dryRun ? '?dryRun=1' : to.length ? `?to=${encodeURIComponent(to.join(','))}` : ''
+  const response = await fetch(`/api/send-reminder${query}`, { method: 'POST', headers: { Authorization: `Bearer ${await user.getIdToken()}` } })
   const data = await response.json().catch(() => ({})) as { error?: string; emails?: EmailPreview[]; results?: SendResult[] }
   if (!response.ok) throw new Error(data.error ?? 'The email service did not respond.')
   return data
 }
 export const previewEmails = async () => (await callSendReminder(true)).emails ?? []
-export const sendTestEmails = async () => (await callSendReminder(false)).results ?? []
+/** Sends today's emails now, to `to` if given (what's typed in the Store email box) or else the saved store email. */
+export const sendTestEmails = async (to: string[] = []) => (await callSendReminder(false, to)).results ?? []
