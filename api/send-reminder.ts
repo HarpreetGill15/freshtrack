@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAuth } from 'firebase-admin/auth'
 import { Resend } from 'resend'
+import { gmailConfigured, gmailFromEnv, sendGmail } from './_lib/mailer.js'
 import { adminApp, DEPARTMENTS, fetchReminderRows, getFirestore, getStoreEmails, STORE_EMAILS, storeDay, storeHour, type ReminderRow } from './_lib/reminder-data.js'
 
 /**
@@ -8,6 +9,10 @@ import { adminApp, DEPARTMENTS, fetchReminderRows, getFirestore, getStoreEmails,
  * to the store's email address. Each is a plain, print-friendly checklist (no links) that staff can
  * print, photograph or read on screen and work through. A department with nothing due gets no email
  * that day. The store email is set in the app under More → Settings.
+ *
+ * Sending: through the hgmgr Gmail account when GMAIL_USER + GMAIL_APP_PASSWORD are set in Vercel
+ * (no domain needed); otherwise through Resend (RESEND_API_KEY, needs a verified domain to reach
+ * anyone but the Resend account owner).
  *
  * Called three ways:
  *  - Vercel Cron (vercel.json), with `Authorization: Bearer $CRON_SECRET`. It's scheduled at both 11:00
@@ -22,6 +27,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const authHeader = String(req.headers.authorization ?? '')
   const cronSecret = process.env.CRON_SECRET
   const isCron = Boolean(cronSecret) && authHeader === `Bearer ${cronSecret}`
+  if (!cronSecret && String(req.headers['user-agent'] ?? '').includes('vercel-cron')) {
+    // Vercel only sends the secret when CRON_SECRET exists, so without it the 7 AM run can't be told apart from a stranger.
+    console.error('send-reminder: CRON_SECRET is not set in Vercel, so the 7 AM run is refused. Add CRON_SECRET and redeploy.')
+    return res.status(500).json({ error: 'CRON_SECRET is not set in Vercel.' })
+  }
   const dryRun = req.query.dryRun === '1'
 
   try {
@@ -55,12 +65,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ today, emails: emails.map(e => ({ list: e.list, to: e.to, count: e.rows.length, subject: e.subject, html: e.rows.length ? e.html : '' })) })
     }
 
+    const useGmail = gmailConfigured()
     const key = process.env.RESEND_API_KEY
-    if (!key) return res.status(500).json({ error: 'RESEND_API_KEY is not set in Vercel.' })
-    const resend = new Resend(key)
+    if (!useGmail && !key) return res.status(500).json({ error: 'No email account set up. Add GMAIL_USER and GMAIL_APP_PASSWORD in Vercel.' })
+    const resend = useGmail ? null : new Resend(key)
     // Resend's shared sender works without setup but only delivers to the Resend account's own email
     // address — set RESEND_FROM_EMAIL (e.g. "FreshTrack <codedates@yourdomain.ca>") after verifying a domain.
     const from = process.env.RESEND_FROM_EMAIL || 'FreshTrack <onboarding@resend.dev>'
+    const deliver = async (to: string[], subject: string, html: string): Promise<string | undefined> => {
+      if (useGmail) {
+        try { await sendGmail({ ...gmailFromEnv(), to, subject, html }); return undefined } catch (e) { return e instanceof Error ? e.message : 'Send failed' }
+      }
+      const result = await resend!.emails.send({ from, to, subject, html })
+      return result.error?.message
+    }
 
     const results: { list: string; to: string[]; count: number; sent: boolean; reason?: string }[] = []
     for (const email of emails) {
@@ -68,9 +86,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // A test on a day with nothing due still sends one email (the first department's "nothing due") so you can see it arrive.
       const sendEmptyForTest = !isCron && !emails.some(e => e.rows.length) && email === emails[0]
       if (!email.rows.length && !sendEmptyForTest) { results.push({ list: email.list, to: email.to, count: 0, sent: false, reason: 'Nothing due today' }); continue }
-      const result = await resend.emails.send({ from, to: email.to, subject: isCron ? email.subject : `[Test] ${email.subject}`, html: email.html })
-      results.push({ list: email.list, to: email.to, count: email.rows.length, sent: !result.error, reason: result.error?.message })
-      await new Promise(resolve => setTimeout(resolve, 600)) // stay under Resend's free-plan rate limit
+      const error = await deliver(email.to, isCron ? email.subject : `[Test] ${email.subject}`, email.html)
+      results.push({ list: email.list, to: email.to, count: email.rows.length, sent: !error, reason: error })
+      await new Promise(resolve => setTimeout(resolve, 600)) // stay under the sender's rate limit
     }
 
     if (isCron) await logRef.set({ lastSentDay: today, lastSentAt: now, results }, { merge: true })
