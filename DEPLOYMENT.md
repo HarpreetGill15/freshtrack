@@ -64,7 +64,7 @@ Scanning, the To-do list and the Checks list need no login.
    Records saved from now on already include the product/check details the lists need; this fills
    them in on older records so lists stop looking each one up.
 
-## 4. Daily emails (Vercel Cron + Resend, both free)
+## 4. Daily emails (Vercel Cron + the hgmgr Gmail, both free)
 
 Every morning at 7 AM (Toronto time) a separate email for each department — Grocery, Dairy, Meat,
 Produce — goes to the store email. Each is a plain, printable checklist (no links): markdowns to
@@ -74,13 +74,16 @@ item. A department with nothing due gets no email that day. The store email is s
 
 ### One-time setup
 
-1. **Resend** (free): sign up at resend.com → API Keys → Create API Key.
+1. **Gmail app password** (free, no domain needed): signed in as the hgmgr Google account →
+   myaccount.google.com → Security → turn on **2-Step Verification** → search **App passwords** →
+   create one named `FreshTrack` → copy the 16 letters. (This lets the app send mail as hgmgr only.)
 2. **Firebase service account** (free) — lets the 7 AM job read the database:
    Firebase Console → gear icon → Project settings → **Service accounts** → **Generate new private key**.
    A `.json` file downloads. Open it in a text editor and copy everything.
 3. **Vercel** → the `928` team's freshtrack project → Settings → Environment Variables. Add, for
    **Production and Preview**:
-   - `RESEND_API_KEY` — the key from step 1.
+   - `GMAIL_USER` — the full hgmgr Gmail address.
+   - `GMAIL_APP_PASSWORD` — the 16 letters from step 1 (spaces are fine).
    - `FIREBASE_SERVICE_ACCOUNT` — paste the whole JSON file from step 2.
    - `CRON_SECRET` — any long random text (e.g. mash the keyboard for 30+ characters). Vercel sends it
      with the 7 AM call so nobody else can trigger the emails.
@@ -92,9 +95,11 @@ The schedule in `vercel.json` runs at 11:00 and 12:00 UTC; whichever is 7 AM in 
 (summer or winter time) sends, the other does nothing, and a log in Firestore (`settings/reminderLog`)
 prevents a double send. Vercel's free plan may run a scheduled job any time within that hour.
 
-### Sending to other people (needs a domain)
+If `CRON_SECRET` is missing, Vercel's 7 AM call is refused and nothing sends; the function log says so.
 
-Until you verify a domain, Resend only delivers to **the email address you signed up to Resend
+### Alternative: Resend (needs a domain)
+
+Used only when the Gmail settings aren't set: add `RESEND_API_KEY`. Until you verify a domain, Resend only delivers to **the email address you signed up to Resend
 with** — perfect for testing, but the store email won't receive anything. To send to anyone:
 Resend → Domains → Add domain (one you own, e.g. a ~$15/year `.ca`) → add the DNS records it shows →
 then set `RESEND_FROM_EMAIL` in Vercel, e.g. `FreshTrack <codedates@yourdomain.ca>`.
