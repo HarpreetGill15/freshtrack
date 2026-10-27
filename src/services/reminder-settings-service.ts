@@ -40,3 +40,44 @@ async function callSendReminder(dryRun: boolean, to: string[] = []) {
 export const previewEmails = async () => (await callSendReminder(true)).emails ?? []
 /** Sends today's emails now, to `to` if given (what's typed in the Store email box) or else the saved store email. */
 export const sendTestEmails = async (to: string[] = []) => (await callSendReminder(false, to)).results ?? []
+
+export type EmailRunStatus = 'sent' | 'partial' | 'failed'
+export type EmailRun = { day: string; at: Date | null; kind: 'daily' | 'retry' | 'test'; status: EmailRunStatus; sentCount: number; results: SendResult[]; error?: string; retryError?: string }
+export type EmailLog = { history: EmailRun[]; lastTest: EmailRun | null }
+
+const toRun = (raw: unknown): EmailRun | null => {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  const at = r.at as { toDate?: () => Date } | undefined
+  return {
+    day: String(r.day ?? ''),
+    at: at?.toDate ? at.toDate() : null,
+    kind: (r.kind as EmailRun['kind']) ?? 'daily',
+    status: (r.status as EmailRunStatus) ?? 'failed',
+    sentCount: Number(r.sentCount ?? 0),
+    results: Array.isArray(r.results) ? r.results as SendResult[] : [],
+    error: r.error ? String(r.error) : undefined,
+    retryError: r.retryError ? String(r.retryError) : undefined,
+  }
+}
+
+/** What the server recorded about the daily emails (settings/reminderLog). Store logins only. */
+export async function getEmailLog(): Promise<EmailLog> {
+  if (!db) throw new Error(firebaseNotConfiguredMessage)
+  const data = (await getDoc(doc(db, 'settings', 'reminderLog'))).data() ?? {}
+  const history = (Array.isArray(data.history) ? data.history : []).map(toRun).filter((r): r is EmailRun => r != null)
+  // Before this log existed only lastSentDay was kept — show it so the history isn't blank on day one.
+  if (!history.length && typeof data.lastSentDay === 'string') {
+    const at = data.lastSentAt as { toDate?: () => Date } | undefined
+    const results = Array.isArray(data.results) ? data.results as SendResult[] : []
+    history.push({ day: data.lastSentDay, at: at?.toDate ? at.toDate() : null, kind: 'daily', status: 'sent', sentCount: results.filter(r => r.sent).length, results })
+  }
+  return { history, lastTest: toRun(data.lastTest) }
+}
+
+/** Today's date and hour in the store's time zone (the emails run on Toronto time). */
+export function storeNow(date = new Date()) {
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
+  const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Toronto', hour: 'numeric', hourCycle: 'h23' }).format(date))
+  return { day, hour }
+}

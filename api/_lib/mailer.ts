@@ -12,6 +12,13 @@ export type MailOptions = {
   to: string[]
   subject: string
   html: string
+  /** Plain-text copy sent alongside the HTML; corporate spam filters distrust HTML-only mail. */
+  text?: string
+  /**
+   * Display name on the From line. Left empty by default so the email shows as the hgmgr Gmail
+   * itself — the store's filter let hgmgr mail through but dropped the same mail labelled
+   * "FreshTrack" (a name that doesn't match the address looks like impersonation to it).
+   */
   fromName?: string
   /** Tests only: talk to a local plain-text server instead of Gmail. */
   server?: { host: string; port: number; secure: boolean }
@@ -24,6 +31,7 @@ export function gmailFromEnv() {
     user: String(process.env.GMAIL_USER ?? '').trim(),
     // Google shows app passwords as four groups of four letters; spaces don't matter.
     pass: String(process.env.GMAIL_APP_PASSWORD ?? '').replace(/\s+/g, ''),
+    fromName: String(process.env.GMAIL_FROM_NAME ?? '').trim(),
   }
 }
 
@@ -32,20 +40,44 @@ const encodeHeader = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?$
 const wrap76 = (s: string) => s.replace(/.{1,76}/g, '$&\r\n')
 const cleanAddress = (s: string) => s.replace(/[\r\n<>]/g, '').trim()
 
-function buildMessage(from: string, fromName: string, to: string[], subject: string, html: string) {
-  const id = `<${Date.now().toString(36)}.${Math.random().toString(36).slice(2)}@freshtrack>`
+function buildMessage(from: string, fromName: string, to: string[], subject: string, html: string, text: string) {
+  const domain = from.split('@')[1] || 'gmail.com'
+  const id = `<${Date.now().toString(36)}.${Math.random().toString(36).slice(2)}@${domain}>`
+  const boundary = `ft-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`
   return [
-    `From: ${encodeHeader(fromName)} <${from}>`,
+    fromName ? `From: ${encodeHeader(fromName)} <${from}>` : `From: ${from}`,
     `To: ${to.join(', ')}`,
     `Subject: ${encodeHeader(subject)}`,
     `Date: ${new Date().toUTCString()}`,
     `Message-ID: ${id}`,
     'MIME-Version: 1.0',
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    wrap76(b64(text)),
+    `--${boundary}`,
     'Content-Type: text/html; charset=UTF-8',
     'Content-Transfer-Encoding: base64',
     '',
     wrap76(b64(html)),
+    `--${boundary}--`,
+    '',
   ].join('\r\n')
+}
+
+/** Rough plain-text version of an HTML email, used when no text copy is given. */
+export function htmlToText(html: string) {
+  return html
+    .replace(/<(style|head)[\s\S]*?<\/\1>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|h1|h2|h3|tr|div|li)>/gi, '\n')
+    .replace(/<\/t[dh]>/gi, '  ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
 export async function sendGmail(opts: MailOptions): Promise<{ ok: true }> {
@@ -104,7 +136,7 @@ export async function sendGmail(opts: MailOptions): Promise<{ ok: true }> {
 
   try {
     await expect(220, 'connect')
-    send('EHLO freshtrack')
+    send(`EHLO ${process.env.VERCEL_URL || 'localhost'}`)
     await expect(250, 'hello')
     send(`AUTH PLAIN ${Buffer.from(`\0${from}\0${opts.pass}`, 'utf8').toString('base64')}`)
     await expect(235, 'login')
@@ -116,7 +148,7 @@ export async function sendGmail(opts: MailOptions): Promise<{ ok: true }> {
     }
     send('DATA')
     await expect(354, 'data')
-    const body = buildMessage(from, opts.fromName ?? 'FreshTrack', to, opts.subject, opts.html)
+    const body = buildMessage(from, opts.fromName ?? '', to, opts.subject, opts.html, opts.text ?? htmlToText(opts.html))
       .split('\r\n').map(l => (l.startsWith('.') ? `.${l}` : l)).join('\r\n') // dot-stuffing
     socket.write(`${body}\r\n.\r\n`)
     await expect(250, 'send')

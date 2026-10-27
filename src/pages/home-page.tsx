@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AppShell } from '../components/app-shell'
 import { Button } from '../components/ui/button'
+import { EmailStatusLine } from '../components/email-status'
+import { useAuth } from '../hooks/use-auth'
 import { getActiveCodeDateCheck } from '../services/code-date-check-service'
 import { countCodeDatesForCheck, getDashboardEntries } from '../services/product-service'
 import { todoCounts } from '../lib/dates'
@@ -10,6 +12,7 @@ import type { CodeDateCheck, DashboardEntry } from '../types/domain'
 
 export function HomePage() {
   const navigate = useNavigate()
+  const { localAdmin } = useAuth()
   const [activeCheck, setActiveCheck] = useState<CodeDateCheck | null>(null)
   const [scanned, setScanned] = useState<number | null>(null)
   const [entries, setEntries] = useState<DashboardEntry[]>([])
@@ -44,6 +47,8 @@ export function HomePage() {
         <TodoRow to="/todo?tab=next5" value={show(counts.next5)} tone="text-soon" label="Expire in the next 5 days" hint="Plan markdowns" />
       </div>
     </section>
+
+    {localAdmin && <EmailStatusLine />}
 
     <Button variant={activeCheck ? 'secondary' : 'primary'} className="mt-5 w-full" onClick={() => navigate('/checks/new')}>Start a new check</Button>
   </AppShell>
