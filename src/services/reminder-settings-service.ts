@@ -41,7 +41,7 @@ export const previewEmails = async () => (await callSendReminder(true)).emails ?
 /** Sends today's emails now, to `to` if given (what's typed in the Store email box) or else the saved store email. */
 export const sendTestEmails = async (to: string[] = []) => (await callSendReminder(false, to)).results ?? []
 
-export type EmailRunStatus = 'sent' | 'partial' | 'failed'
+export type EmailRunStatus = 'sent' | 'partial' | 'failed' | 'nothing'
 export type EmailRun = { day: string; at: Date | null; kind: 'daily' | 'retry' | 'test'; status: EmailRunStatus; sentCount: number; results: SendResult[]; error?: string; retryError?: string }
 export type EmailLog = { history: EmailRun[]; lastTest: EmailRun | null }
 
