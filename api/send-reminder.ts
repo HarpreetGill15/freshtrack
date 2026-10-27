@@ -7,9 +7,8 @@ import { adminApp, DEPARTMENTS, fetchReminderRows, getFirestore, getStoreEmails,
 /**
  * Daily code-date emails — a separate email per department (Grocery, Dairy, Meat, Produce) that has
  * something due, all sent to the store's email address. Each is a plain, print-friendly checklist (no
- * links). On a day when no department has anything due, ONE short "nothing due today" email goes out
- * instead, so a missing email always means something went wrong. The store email is set in the app
- * under More → Settings.
+ * links). Nothing is sent when nothing is due; the run is still logged as "nothing due" so the app can
+ * tell a quiet day from a failed one. The store email is set in the app under More → Settings.
  *
  * Sending: through the hgmgr Gmail account when GMAIL_USER + GMAIL_APP_PASSWORD are set in Vercel
  * (no domain needed); otherwise through Resend (RESEND_API_KEY, needs a verified domain).
@@ -30,13 +29,13 @@ const RETRY_HOUR = 8
 const HISTORY_DAYS = 14
 
 type Result = { list: string; to: string[]; count: number; sent: boolean; reason?: string }
-type RunStatus = 'sent' | 'partial' | 'failed'
+type RunStatus = 'sent' | 'partial' | 'failed' | 'nothing'
 type RunLog = { day: string; at: Date; kind: 'daily' | 'retry' | 'test'; status: RunStatus; sentCount: number; results: Result[]; error?: string }
 
 const statusOf = (results: Result[], error?: string): RunStatus => {
   if (error) return 'failed'
   const attempted = results.filter(r => r.sent || r.reason !== 'Nothing due today')
-  if (!attempted.length) return 'failed'
+  if (!attempted.length) return results.length ? 'nothing' : 'failed'
   if (attempted.every(r => r.sent)) return 'sent'
   return attempted.some(r => r.sent) ? 'partial' : 'failed'
 }
@@ -51,7 +50,7 @@ async function recordRun(logRef: FirebaseFirestore.DocumentReference, run: RunLo
     // A retry that fails doesn't hide that 7 AM partly worked; a retry that works wins.
     const keep = previous && previous.status === 'partial' && run.status === 'failed' ? { ...previous, retryError: run.error ?? 'Retry failed' } : run
     const update: Record<string, unknown> = { lastRun: run, history: [keep, ...history].slice(0, HISTORY_DAYS) }
-    if (run.status === 'sent') { update.lastSentDay = run.day; update.lastSentAt = run.at; update.results = run.results }
+    if (run.status === 'sent' || run.status === 'nothing') { update.lastSentDay = run.day; update.lastSentAt = run.at; update.results = run.results }
     await logRef.set(update, { merge: true })
   } catch (error) {
     console.error('send-reminder: could not write the send log', error)
@@ -129,12 +128,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return result.error?.message
     }
 
-    // Nothing due anywhere: one short email so the store still hears from FreshTrack.
-    const outgoing = nothingDue ? [{ list: 'All departments', to: storeEmails, rows: [] as ReminderRow[], ...buildNothingDueEmail(today) }] : emails
+    // Nothing due anywhere: no email. Only a test from Settings sends the short "nothing due" note, so you can see one arrive.
+    const outgoing = nothingDue && !isCron ? [{ list: 'All departments', to: storeEmails, rows: [] as ReminderRow[], ...buildNothingDueEmail(today) }] : emails
     const results: Result[] = []
     for (const email of outgoing) {
       if (!email.to.length) { results.push({ list: email.list, to: [], count: email.rows.length, sent: false, reason: 'No store email set' }); continue }
-      if (!nothingDue && !email.rows.length) { results.push({ list: email.list, to: email.to, count: 0, sent: false, reason: 'Nothing due today' }); continue }
+      if (!email.rows.length && !(nothingDue && !isCron)) { results.push({ list: email.list, to: email.to, count: 0, sent: false, reason: 'Nothing due today' }); continue }
       const subject = isCron ? email.subject : `[Test] ${email.subject}`
       const error = await deliver(email.to, subject, email.html, email.text)
       results.push({ list: email.list, to: email.to, count: email.rows.length, sent: !error, reason: error })

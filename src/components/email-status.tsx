@@ -14,9 +14,9 @@ const failedLists = (run: EmailRun) => run.results.filter(r => !r.sent && r.reas
 export function todayStatus(log: EmailLog, now = new Date()): TodayStatus {
   const { day, hour } = storeNow(now)
   const run = log.history.find(h => h.day === day)
+  if (run?.status === 'nothing') return { tone: 'good', title: 'Nothing due — no email needed', detail: `Checked at ${time(run.at)}. No rechecks, nothing expiring today, nothing in the next 5 days.` }
   if (run?.status === 'sent') {
-    const nothingDue = run.results.length === 1 && run.results[0].list === 'All departments'
-    return { tone: 'good', title: `Sent at ${time(run.at)}${run.kind === 'retry' ? ' (on the 8 AM retry)' : ''}`, detail: nothingDue ? 'Nothing was due — a "nothing due today" email went out.' : `${run.sentCount} department email${run.sentCount === 1 ? '' : 's'} sent: ${run.results.filter(r => r.sent).map(r => r.list).join(', ')}.` }
+    return { tone: 'good', title: `Sent at ${time(run.at)}${run.kind === 'retry' ? ' (on the 8 AM retry)' : ''}`, detail: `${run.sentCount} department email${run.sentCount === 1 ? '' : 's'} sent: ${run.results.filter(r => r.sent).map(r => r.list).join(', ')}.` }
   }
   if (run?.status === 'partial') {
     const failed = failedLists(run)
@@ -58,15 +58,15 @@ export function EmailStatusPanel({ log, error }: { log: EmailLog | null; error: 
     {past.length > 0 && <>
       <p className="mt-4 text-[13px] font-bold uppercase tracking-wider text-muted">Earlier</p>
       <ul className="mt-1 divide-y divide-hairline">{past.map(run => {
-        const tone: Tone = run.status === 'sent' ? 'good' : run.status === 'partial' ? 'warn' : 'bad'
+        const tone: Tone = run.status === 'sent' || run.status === 'nothing' ? 'good' : run.status === 'partial' ? 'warn' : 'bad'
         return <li key={run.day} className="flex items-start gap-2.5 py-2 text-sm">
           <ToneIcon tone={tone} size={17} />
           <span className="w-24 shrink-0 font-bold">{dayLabel(run.day)}</span>
-          <span className="min-w-0 flex-1 text-muted">{run.status === 'sent' ? `Sent ${time(run.at)}${run.kind === 'retry' ? ' (retry)' : ''}` : run.status === 'partial' ? `Partly sent — ${failedLists(run).map(r => r.list).join(', ')} failed` : `Not sent — ${run.error || failedLists(run).map(r => r.reason).join(', ') || 'unknown error'}`}</span>
+          <span className="min-w-0 flex-1 text-muted">{run.status === 'nothing' ? 'Nothing due — no email' : run.status === 'sent' ? `Sent ${time(run.at)}${run.kind === 'retry' ? ' (retry)' : ''}` : run.status === 'partial' ? `Partly sent — ${failedLists(run).map(r => r.list).join(', ')} failed` : `Not sent — ${run.error || failedLists(run).map(r => r.reason).join(', ') || 'unknown error'}`}</span>
         </li>
       })}</ul>
     </>}
-    {log.lastTest && <p className="mt-3 text-xs text-muted">Last test: {dayLabel(log.lastTest.day)} {time(log.lastTest.at)} — {log.lastTest.status === 'sent' ? 'sent' : log.lastTest.status === 'partial' ? 'partly sent' : `failed${log.lastTest.error ? ` (${log.lastTest.error})` : ''}`}.</p>}
+    {log.lastTest && <p className="mt-3 text-xs text-muted">Last test: {dayLabel(log.lastTest.day)} {time(log.lastTest.at)} — {log.lastTest.status === 'sent' ? 'sent' : log.lastTest.status === 'nothing' ? 'nothing to send' : log.lastTest.status === 'partial' ? 'partly sent' : `failed${log.lastTest.error ? ` (${log.lastTest.error})` : ''}`}.</p>}
     <p className="mt-3 text-xs text-muted">"Sent" means Gmail accepted it. If the store inbox doesn't have it, check the Junk folder there.</p>
   </section>
 }

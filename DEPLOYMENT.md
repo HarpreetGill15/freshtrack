@@ -69,8 +69,8 @@ Scanning, the To-do list and the Checks list need no login.
 Every morning at 7 AM (Toronto time) a separate email for each department — Grocery, Dairy, Meat,
 Produce — goes to the store email. Each is a plain, printable checklist (no links): markdowns to
 recheck, items to pull or mark down today, and items expiring in the next 5 days, with a tick box per
-item. A department with nothing due gets no list; on a day with nothing due anywhere, one short
-"nothing due today" email goes out instead, so a missing email always means something went wrong.
+item. A department with nothing due gets no email, and nothing at all is sent on a day with nothing
+due — the app shows "Nothing due — no email needed" for that day, so it isn't mistaken for a failure.
 The store email is set in the app: **More → Settings → Daily emails**, which also shows whether
 today's email went out and the last week's results (the Home page shows a one-line version).
 

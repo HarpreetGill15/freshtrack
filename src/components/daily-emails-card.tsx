@@ -7,8 +7,8 @@ import { getStoreEmails, parseEmails, previewEmails, saveStoreEmails, sendTestEm
 
 /**
  * Settings → Daily emails. Every morning at 7 AM each department (Grocery, Dairy, Meat, Produce)
- * with something due gets its own printable checklist, sent to the store email; on a day with nothing
- * due anywhere, one short "nothing due" email goes instead. Shows whether today's email went out.
+ * with something due gets its own printable checklist, sent to the store email. Nothing is sent when
+ * nothing is due. Shows whether today's email went out.
  * Preview shows today's emails without sending; Send test sends them now with "[Test]" in the subject.
  */
 export function DailyEmailsCard() {
@@ -50,7 +50,7 @@ export function DailyEmailsCard() {
   }
 
   return <article className="rounded-2xl bg-white p-4">
-    <div className="flex items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-100 text-brand-700"><Mail size={19}/></span><div><p className="font-bold">Daily emails</p><p className="text-sm text-muted">A printable list for each department with something due, sent to the store email at 7 AM. On a day with nothing due, one short "nothing due" email goes instead.</p></div></div>
+    <div className="flex items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-100 text-brand-700"><Mail size={19}/></span><div><p className="font-bold">Daily emails</p><p className="text-sm text-muted">A printable list for each department with something due, sent to the store email at 7 AM. No email on days with nothing due.</p></div></div>
     <EmailStatusPanel log={emailLog.log} error={emailLog.error} />
     {text == null ? <p className="mt-3 text-sm text-muted">Loading…</p> : <>
       <label className="mt-4 block">
