@@ -1,12 +1,14 @@
 import { Mail } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { BottomSheet } from './bottom-sheet'
+import { EmailStatusPanel, useEmailLog } from './email-status'
 import { Button } from './ui/button'
 import { getStoreEmails, parseEmails, previewEmails, saveStoreEmails, sendTestEmails, type EmailPreview, type SendResult } from '../services/reminder-settings-service'
 
 /**
  * Settings → Daily emails. Every morning at 7 AM each department (Grocery, Dairy, Meat, Produce)
- * gets its own printable checklist, sent to the store email — only on days with something due.
+ * with something due gets its own printable checklist, sent to the store email; on a day with nothing
+ * due anywhere, one short "nothing due" email goes instead. Shows whether today's email went out.
  * Preview shows today's emails without sending; Send test sends them now with "[Test]" in the subject.
  */
 export function DailyEmailsCard() {
@@ -17,6 +19,7 @@ export function DailyEmailsCard() {
   const [previews, setPreviews] = useState<EmailPreview[] | null>(null)
   const [viewing, setViewing] = useState<EmailPreview | null>(null)
   const [results, setResults] = useState<SendResult[] | null>(null)
+  const emailLog = useEmailLog()
 
   useEffect(() => {
     getStoreEmails().then(emails => setText(emails.join('\n'))).catch(e => { setText(''); setMessage(e instanceof Error ? e.message : 'Could not load the store email.') })
@@ -43,11 +46,12 @@ export function DailyEmailsCard() {
     if (!valid.length) { setMessage('Type an email address in the box above first.'); return }
     if (!window.confirm(`Send today's department emails to ${valid.join(', ')} now? The subject will start with [Test].`)) return
     setBusy('test'); setMessage(''); setPreviews(null)
-    try { setResults(await sendTestEmails(valid)) } catch (e) { setMessage(e instanceof Error ? e.message : 'Could not send.') } finally { setBusy(null) }
+    try { setResults(await sendTestEmails(valid)) } catch (e) { setMessage(e instanceof Error ? e.message : 'Could not send.') } finally { setBusy(null); emailLog.reload() }
   }
 
   return <article className="rounded-2xl bg-white p-4">
-    <div className="flex items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-100 text-brand-700"><Mail size={19}/></span><div><p className="font-bold">Daily emails</p><p className="text-sm text-muted">A printable list for each department, sent to the store email at 7 AM — only on days with something due.</p></div></div>
+    <div className="flex items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-100 text-brand-700"><Mail size={19}/></span><div><p className="font-bold">Daily emails</p><p className="text-sm text-muted">A printable list for each department with something due, sent to the store email at 7 AM. On a day with nothing due, one short "nothing due" email goes instead.</p></div></div>
+    <EmailStatusPanel log={emailLog.log} error={emailLog.error} />
     {text == null ? <p className="mt-3 text-sm text-muted">Loading…</p> : <>
       <label className="mt-4 block">
         <span className="font-bold">Store email</span>
@@ -63,7 +67,7 @@ export function DailyEmailsCard() {
     {message && <p role="status" className="mt-3 text-sm font-bold text-muted">{message}</p>}
 
     {previews && <ul className="mt-3 divide-y divide-hairline rounded-xl border border-hairline">{previews.map(p => <li key={p.list} className="flex min-h-14 items-center gap-3 px-3 py-2">
-      <span className="min-w-0 flex-1"><span className="block font-bold">{p.list}</span><span className="block truncate text-sm text-muted">{p.count ? `${p.count} item${p.count === 1 ? '' : 's'}` : 'Nothing due — no email today'}</span></span>
+      <span className="min-w-0 flex-1"><span className="block font-bold">{p.list}</span><span className="block truncate text-sm text-muted">{p.count ? `${p.count} item${p.count === 1 ? '' : 's'}` : 'Nothing due — no list for this department'}</span></span>
       {p.count > 0 && <button type="button" onClick={() => setViewing(p)} className="min-h-11 shrink-0 px-2 text-sm font-bold text-brand-600">View</button>}
     </li>)}</ul>}
 

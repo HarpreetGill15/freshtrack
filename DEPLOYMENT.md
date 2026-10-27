@@ -69,8 +69,14 @@ Scanning, the To-do list and the Checks list need no login.
 Every morning at 7 AM (Toronto time) a separate email for each department — Grocery, Dairy, Meat,
 Produce — goes to the store email. Each is a plain, printable checklist (no links): markdowns to
 recheck, items to pull or mark down today, and items expiring in the next 5 days, with a tick box per
-item. A department with nothing due gets no email that day. The store email is set in the app:
-**More → Settings → Daily emails**.
+item. A department with nothing due gets no list; on a day with nothing due anywhere, one short
+"nothing due today" email goes out instead, so a missing email always means something went wrong.
+The store email is set in the app: **More → Settings → Daily emails**, which also shows whether
+today's email went out and the last week's results (the Home page shows a one-line version).
+
+The emails come from the hgmgr address with no "FreshTrack" display name — the store's mail filter
+let plain hgmgr mail through but dropped the same mail named "FreshTrack". To show a name anyway,
+set `GMAIL_FROM_NAME` in Vercel (not recommended for the Metro inbox).
 
 ### One-time setup
 
@@ -91,9 +97,11 @@ item. A department with nothing due gets no email that day. The store email is s
 5. In the app: sign in → More → Settings → Daily emails → type the store email → Save →
    **Preview today** to check, then **Send test now**.
 
-The schedule in `vercel.json` runs at 11:00 and 12:00 UTC; whichever is 7 AM in Toronto that day
-(summer or winter time) sends, the other does nothing, and a log in Firestore (`settings/reminderLog`)
-prevents a double send. Vercel's free plan may run a scheduled job any time within that hour.
+The schedule in `vercel.json` runs at 11:00, 12:00 and 13:00 UTC. Whichever is 7 AM in Toronto that
+day (summer or winter time) sends; whichever is 8 AM is a retry that only sends if 7 AM didn't get
+everything out; the other does nothing. A log in Firestore (`settings/reminderLog`) prevents a double
+send and records each day's result for the app. Vercel's free plan may run a scheduled job any time
+within that hour, and never retries a failed run on its own.
 
 If `CRON_SECRET` is missing, Vercel's 7 AM call is refused and nothing sends; the function log says so.
 
