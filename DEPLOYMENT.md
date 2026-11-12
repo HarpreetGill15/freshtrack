@@ -43,12 +43,13 @@ keeping this config secret. This is standard Firebase web practice.
 ### Store logins (free — Firebase email/password)
 
 Two logins, both normal Firebase Authentication accounts (free on the Spark plan). No Vercel
-settings or server code are involved, and the passwords are not in this repo.
+settings or server code are involved. Passwords are never written in this repo — keep them
+somewhere private and use long ones that aren't the store number.
 
-| Staff type | Can do | Firebase email | Firebase password |
-|---|---|---|---|
-| `928` / `928` | delete checks, import products, settings | `928@freshtrack.local` | `928-freshtrack` |
-| `h` / `928` | all of that, plus the charts Dashboard | `h@freshtrack.local` | `928-freshtrack` |
+| Username | Can do | Firebase email |
+|---|---|---|
+| `928` | delete checks, import products, settings | `928@freshtrack.local` |
+| `h` | all of that, plus the charts Dashboard | `h@freshtrack.local` |
 
 Scanning, the To-do list and the Checks list need no login.
 
