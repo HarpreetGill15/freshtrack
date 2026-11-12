@@ -3,14 +3,14 @@ import { browserSessionPersistence, getAuth, onAuthStateChanged, setPersistence,
 import { app, firebaseNotConfiguredMessage } from '../lib/firebase'
 
 // Two logins, both free Firebase email/password accounts created once in Firebase Console (see
-// DEPLOYMENT.md). The passwords live only in Firebase, never in this code.
-//   928 / 928 — staff: delete checks, import products, settings
-//   h   / 928 — manager: all of that, plus the charts Dashboard
+// DEPLOYMENT.md). The passwords live only in Firebase, never in this code or its docs.
+//   928 — staff: delete checks, import products, settings
+//   h   — manager: all of that, plus the charts Dashboard
 // Scanning and the To-do list need no login at all.
 //
 // Firebase needs an email address and a password of at least 6 characters, so what staff type is
-// expanded the same way here and when the accounts are created: "928" → "928@freshtrack.local",
-// password "928" → "928-freshtrack". firestore.rules only lets these two emails delete.
+// expanded the same way here and when the accounts are created: username → "<username>@freshtrack.local",
+// and the typed password gets a fixed suffix. firestore.rules only lets these two emails delete.
 const EMAIL_DOMAIN = 'freshtrack.local'
 const PASSWORD_SUFFIX = '-freshtrack'
 const MANAGER_EMAILS = ['h@freshtrack.local']
