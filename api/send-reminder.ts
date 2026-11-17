@@ -130,13 +130,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Nothing due anywhere: no email. Only a test from Settings sends the short "nothing due" note, so you can see one arrive.
     const outgoing = nothingDue && !isCron ? [{ list: 'All departments', to: storeEmails, rows: [] as ReminderRow[], ...buildNothingDueEmail(today) }] : emails
+    // Departments already emailed today. Saved right after each send (not at the end), so if 7 AM
+    // sends some and then fails or times out, the 8 AM retry only sends the ones that didn't go out.
+    const logData = isCron ? (await logRef.get()).data() : undefined
+    const alreadySent = new Set<string>(isCron && logData?.sentToday?.day === today && Array.isArray(logData.sentToday.lists) ? logData.sentToday.lists : [])
     const results: Result[] = []
     for (const email of outgoing) {
       if (!email.to.length) { results.push({ list: email.list, to: [], count: email.rows.length, sent: false, reason: 'No store email set' }); continue }
       if (!email.rows.length && !(nothingDue && !isCron)) { results.push({ list: email.list, to: email.to, count: 0, sent: false, reason: 'Nothing due today' }); continue }
+      if (alreadySent.has(email.list)) { results.push({ list: email.list, to: email.to, count: email.rows.length, sent: true, reason: 'Already sent earlier today' }); continue }
       const subject = isCron ? email.subject : `[Test] ${email.subject}`
       const error = await deliver(email.to, subject, email.html, email.text)
       results.push({ list: email.list, to: email.to, count: email.rows.length, sent: !error, reason: error })
+      if (isCron && !error) {
+        alreadySent.add(email.list)
+        await logRef.set({ sentToday: { day: today, lists: [...alreadySent] } }, { merge: true }).catch(e => console.error('send-reminder: could not save sent department', e))
+      }
       await new Promise(resolve => setTimeout(resolve, 600)) // stay under the sender's rate limit
     }
 
